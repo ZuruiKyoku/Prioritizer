@@ -1,0 +1,75 @@
+{
+	"version": "2.0.0",
+	"inputs": [
+		{
+			"id": "deviceIpPort",
+			"description": "Enter Device IP:Port (e.g., 192.168.1.5:35000)",
+			"default": "",
+			"type": "promptString"
+		},
+		{
+			"id": "pairingCode",
+			"description": "Enter Pairing Code",
+			"default": "",
+			"type": "promptString"
+		}
+	],
+	"tasks": [
+		{
+			"type": "gradle",
+			"id": "c:\\Users\\zurui\\OneDrive\\Documents\\Antigravity\\PrioritizerbuildEnvironmentPrioritizer",
+			"script": "buildEnvironment",
+			"description": "Displays all buildscript dependencies declared in root project 'Prioritizer'.",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"project": "Prioritizer",
+			"buildFile": "C:\\Users\\zurui\\OneDrive\\Documents\\Antigravity\\Prioritizer\\build.gradle.kts",
+			"rootProject": "Prioritizer",
+			"projectFolder": "c:\\Users\\zurui\\OneDrive\\Documents\\Antigravity\\Prioritizer",
+			"workspaceFolder": "c:\\Users\\zurui\\OneDrive\\Documents\\Antigravity\\Prioritizer",
+			"args": "",
+			"javaDebug": false,
+			"problemMatcher": [
+				"$gradle"
+			],
+			"label": "gradle: buildEnvironment"
+		},
+		{
+			"label": "Wireless Build & Install",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/scripts/setup_wireless.ps1"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"presentation": {
+				"reveal": "always",
+				"panel": "new"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "Pair Android Device",
+			"type": "shell",
+			"command": "C:\\Users\\zurui\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe",
+			"args": [
+				"pair",
+				"${input:deviceIpPort}",
+				"${input:pairingCode}"
+			],
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			}
+		}
+	]
+}

@@ -1,0 +1,24 @@
+<resources>
+    <!-- Brand Colors -->
+    <color name="purple_40">#7C4DFF</color>
+    <color name="teal_40">#26A69A</color>
+
+    <!-- Dark Theme Colors -->
+    <color name="background_dark">#121212</color>
+    <color name="surface">#1E1E1E</color>
+    <color name="onSurface">#FFFFFF</color>
+    <color name="onPrimary">#FFFFFF</color>
+
+    <!-- Priority Colors - Dark -->
+    <color name="priority_1">#388E3C</color>  <!-- deep green -->
+    <color name="priority_2">#558B2F</color>
+    <color name="priority_3">#9E9D24</color>
+    <color name="priority_4">#FBC02D</color>
+    <color name="priority_5">#0000FF</color>
+    <color name="priority_6">#FB8C00</color>
+    <color name="priority_7">#F4511E</color>
+    <color name="priority_8">#E64A19</color>
+    <color name="priority_9">#D32F2F</color>
+    <color name="priority_10">#B71C1C</color> <!-- deep red -->
+
+</resources>

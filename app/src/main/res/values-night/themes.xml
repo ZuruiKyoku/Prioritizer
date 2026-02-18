@@ -1,0 +1,5 @@
+<resources>
+    <style name="Theme.Prioritizer" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Optional: set colors if needed, or remove -->
+    </style>
+</resources>

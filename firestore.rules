@@ -1,0 +1,187 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    // -------- Helpers --------
+    function signedIn() {
+      return request.auth != null && request.auth.uid != null;
+    }
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    // Path-aware helpers (use path literals, not strings)
+    function listExists(uuid) {
+      return exists(/databases/$(db)/documents/sharedLists/$(uuid));
+    }
+    function listDoc(uuid) {
+      return get(/databases/$(db)/documents/sharedLists/$(uuid));
+    }
+    function memberExists(uuid, uid) {
+      return exists(/databases/$(db)/documents/sharedLists/$(uuid)/sharedWith/$(uid));
+    }
+    function memberDoc(uuid, uid) {
+      return get(/databases/$(db)/documents/sharedLists/$(uuid)/sharedWith/$(uid));
+    }
+
+    function isOwner(uuid) {
+      return signedIn()
+        && listExists(uuid)
+        && listDoc(uuid).data.ownerId == request.auth.uid;
+    }
+
+    function isAcceptedMember(uuid) {
+      return signedIn() && (
+        isOwner(uuid) ||
+        (memberExists(uuid, request.auth.uid) &&
+         memberDoc(uuid, request.auth.uid).data.status == "accepted")
+      );
+    }
+
+    function writeFieldsAre(allowed) {
+      return request.writeFields.size() > 0 && request.writeFields.hasOnly(allowed);
+    }
+
+    // -------- sharedLists/{uuid} --------
+    match /sharedLists/{uuid} {
+
+      // Use resource.* for the current doc
+      function isOwnerHere() {
+        return signedIn() && resource.data.ownerId == request.auth.uid;
+      }
+      function isPendingOrAcceptedHere() {
+        return signedIn()
+          && memberExists(uuid, request.auth.uid)
+          && memberDoc(uuid, request.auth.uid).data.status in ['pending','accepted'];
+      }
+      function isAcceptedMemberHere() {
+        return signedIn() && (
+          isOwnerHere() ||
+          (memberExists(uuid, request.auth.uid) &&
+           memberDoc(uuid, request.auth.uid).data.status == 'accepted')
+        );
+      }
+
+      // Read parent metadata for owner or pending/accepted
+      allow get: if isOwnerHere() || isPendingOrAcceptedHere();
+
+      // Query listing owner-only
+      allow list: if isOwnerHere();
+
+      // Create list (ownerId must be caller)
+      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid;
+
+      // Updates
+      allow update: if isOwnerHere()
+        || (isAcceptedMemberHere()
+            && writeFieldsAre(['todoCount','completedCount','totalCount','name','updatedAt']));
+
+      allow delete: if isOwnerHere();
+
+      // tasks (accepted members only)
+			match /tasks/{taskId} {
+  			allow get, list: if isAcceptedMember(uuid);
+
+  			// Create/update: must have required fields and types
+  			allow create, update: if isAcceptedMember(uuid)
+    			&& request.resource.data.keys().hasAll(['id','description','priority','done'])
+    			&& request.resource.data.id is int
+    			&& request.resource.data.description is string
+    			&& request.resource.data.priority is int
+    			&& request.resource.data.done is bool;
+
+  			// Delete: only need membership check
+  			allow delete: if isAcceptedMember(uuid);
+			}
+
+
+
+      // sharedWith subcollection (RELATIVE path)
+      match /sharedWith/{memberUid} {
+        allow get:  if isOwner(uuid) || isSelf(memberUid);
+        allow list: if isOwner(uuid);
+
+        // Owner creates membership (uid must match doc id; status pending/accepted)
+        allow create: if isOwner(uuid)
+          && request.resource.data.keys().hasAll(['uid','status'])
+          && request.resource.data.uid == memberUid
+          && request.resource.data.status in ['pending','accepted'];
+
+        // Member can update ONLY status/respondedAt (no need to resend uid)
+        // Transitions: pending -> accepted|declined, accepted -> removed
+        allow update: if isOwner(uuid)
+  || (
+    isSelf(memberUid)
+    && resource.data.uid == memberUid
+    && (
+      // Only allow changing these keys during accept/decline/remove
+      request.resource.data.diff(resource.data).changedKeys().hasOnly(['status','respondedAt'])
+    )
+    && (
+      (resource.data.status == 'pending'  && request.resource.data.status in ['accepted','declined']) ||
+      (resource.data.status in ['accepted', 'removed'] && request.resource.data.status == 'removed')
+    )
+  );
+
+
+        allow delete: if isOwner(uuid);
+      }
+    }
+
+    // -------- users/{uid}/lists/{localListId} --------
+    match /users/{uid} {
+      allow get: if isSelf(uid);
+      
+      // ✅ Allow creating/updating/deleting their own profile doc
+  		allow create, update, delete: if isSelf(uid);
+
+      match /lists/{localListId} {
+        allow get, list: if isSelf(uid);
+        allow create, update, delete: if isSelf(uid);
+
+        match /tasks/{taskId} {
+          allow get, list, create, update, delete: if isSelf(uid);
+          allow create, update: if isSelf(uid)
+            && request.resource.data.keys().hasAll(['id','description','priority','done'])
+            && request.resource.data.id is int
+            && request.resource.data.description is string
+            && request.resource.data.priority is int
+            && request.resource.data.done is bool;
+        }
+      }
+    }
+
+    // -------- notifications/{recipientUid}/items/{notifId} --------
+    match /notifications/{recipientUid}/items/{notifId} {
+      allow get, list, delete: if isSelf(recipientUid);
+      allow create: if signedIn()
+        && request.resource.data.type in ['LIST_INVITE']
+        && request.resource.data.from == request.auth.uid
+        && request.resource.data.keys().hasAny(['from','fromName','uuid','listName','timestamp']);
+    }
+
+    // -------- friends/{friendDocId} --------
+    match /friends/{friendDocId} {
+      allow get, list: if signedIn()
+        && (resource.data.userId == request.auth.uid || resource.data.friendUid == request.auth.uid);
+
+      allow create, update, delete: if signedIn()
+        && (request.resource.data.userId == request.auth.uid || request.resource.data.friendUid == request.auth.uid)
+        && request.resource.data.keys().hasAll(['userId','friendUid']);
+    }
+
+    // -------- friend_requests/{uid} --------
+    match /friend_requests/{uid} {
+      match /incoming/{fromUid} {
+        allow get, list, delete: if isSelf(uid);
+        allow create: if signedIn()
+          && request.auth.uid == fromUid
+          && request.resource.data.uid == fromUid;
+      }
+      match /outgoing/{toUid} {
+        allow get, list, delete: if isSelf(uid);
+        allow create: if isSelf(uid) && request.resource.data.uid == uid;
+      }
+    }
+  }
+}
