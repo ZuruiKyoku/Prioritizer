@@ -30,7 +30,6 @@ interface TaskDao {
     @Query("SELECT * FROM task_lists WHERE id = :id")
     suspend fun getTaskListById(id: Long): TaskListEntity?
 
-    // ✅ Flow version for observing the name
     @Query("SELECT * FROM task_lists WHERE id = :id")
     fun observeTaskListById(id: Long): Flow<TaskListEntity?>
 

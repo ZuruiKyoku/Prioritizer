@@ -142,7 +142,7 @@ class MainActivity : ComponentActivity() {
                                         scope.launch {
                                             userPrefs.setLoggedIn(false)
                                             navController.navigate("login") {
-                                                popUpTo("profile") { inclusive = true }
+                                                popUpTo(0) { inclusive = true }
                                             }
                                         }
                                     }

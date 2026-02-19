@@ -57,6 +57,26 @@
 			"problemMatcher": []
 		},
 		{
+			"label": "Wireless Build & Install Multi Device",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/scripts/install_all.ps1"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"presentation": {
+				"reveal": "always",
+				"panel": "new"
+			},
+			"problemMatcher": []
+		},
+		{
 			"label": "Pair Android Device",
 			"type": "shell",
 			"command": "C:\\Users\\zurui\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe",

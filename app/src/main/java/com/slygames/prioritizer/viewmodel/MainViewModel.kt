@@ -860,10 +860,8 @@ class MainViewModel(
             stopSharedMirror(uuid)
 
             try {
-                // ✅ Member update: only status/respondedAt (matches rules)
                 leaveSharedListLogic(uuid, me.uid, db)
 
-                // convenience ref (your own /users/{me}/lists/{localId})
                 db.collection("users")
                         .document(me.uid)
                         .collection("lists")
@@ -872,8 +870,6 @@ class MainViewModel(
                         .await()
             } catch (e: Exception) {
                 Log.e("MainViewModel", "Failed to leave shared list remotely: ${e.message}", e)
-                // We continue to local cleanup so the user isn't stuck,
-                // but we should warn them (or handled silently if just offline)
                 _events.emit(
                         "Warning: Could not update server, but removed locally. Error: ${e.localizedMessage}"
                 )
@@ -894,7 +890,7 @@ class MainViewModel(
         }
     }
 
-    /** Owner-only hard delete for everyone (use carefully). */
+    /** Owner-only hard delete for everyone */
     private suspend fun deleteCollectionInBatches(
             colRef: CollectionReference,
             batchSize: Long = 300L
@@ -958,9 +954,7 @@ class MainViewModel(
                     stopSharingForEveryone(doc.id)
                 }
 
-                // B) Leave all other shared lists (best effort finding them from local refs)
-                // We assume 'allLists' (the flow) might try to update, so we look at Firestore
-                // 'users/{uid}/lists'
+                // B) Leave all other shared lists
                 val myListsRef = db.collection("users").document(uid).collection("lists")
                 val myLists = myListsRef.get().await()
                 for (doc in myLists) {
@@ -968,13 +962,6 @@ class MainViewModel(
                     val isShared = (doc.getBoolean("isShared") ?: false) || !uuid.isNullOrBlank()
 
                     if (isShared && !uuid.isNullOrBlank()) {
-                        // We might be a member. Attempt to leave.
-                        // If we were owner, we already deleted it in step A, but 'leave' is
-                        // safeish/idempotent-ish
-                        // optimization: check if we deleted it?
-                        // Logic: step A deleted the doc, so leaveSharedList might fail or do
-                        // nothing.
-                        // Let's just try-catch leave.
                         try {
                             leaveSharedListLogic(uuid, uid, db)
                         } catch (_: Exception) {}
@@ -986,10 +973,43 @@ class MainViewModel(
                 }
 
                 // C) Delete private lists and the user's list references
-                // We can just delete the whole 'lists' subcollection
                 deleteCollectionInBatches(myListsRef)
 
-                // D) Delete Profile Image (if exists)
+                // D) Clean up Friends and Requests
+                // 1. Delete friends connections (userId == uid OR friendUid == uid)
+                val friends1 = db.collection("friends").whereEqualTo("userId", uid).get().await()
+                val friends2 = db.collection("friends").whereEqualTo("friendUid", uid).get().await()
+                val friendsBatch = db.batch()
+                friends1.forEach { friendsBatch.delete(it.reference) }
+                friends2.forEach { friendsBatch.delete(it.reference) }
+                if (!friends1.isEmpty || !friends2.isEmpty) {
+                    friendsBatch.commit().await()
+                }
+
+                // 2. Delete my request subcollections
+                val requestsRef = db.collection("friend_requests").document(uid)
+                deleteCollectionInBatches(requestsRef.collection("incoming"))
+                deleteCollectionInBatches(requestsRef.collection("outgoing"))
+                requestsRef.delete().await()
+
+                // 3. Delete requests I sent to others (stored in their 'incoming')
+                // Note: This requires a Collection Group Index on 'incoming' for field 'uid'
+                try {
+                    val sentToOthers =
+                            db.collectionGroup("incoming").whereEqualTo("uid", uid).get().await()
+                    val sentBatch = db.batch()
+                    sentToOthers.forEach { sentBatch.delete(it.reference) }
+                    if (!sentToOthers.isEmpty) {
+                        sentBatch.commit().await()
+                    }
+                } catch (e: Exception) {
+                    Log.w(
+                            "MainViewModel",
+                            "Could not delete sent requests (missing index?): ${e.message}"
+                    )
+                }
+
+                // E) Delete Profile Image (if exists)
                 val userDocRef = db.collection("users").document(uid)
                 val userSnapshot = userDocRef.get().await()
                 if (userSnapshot.exists()) {
@@ -1005,13 +1025,13 @@ class MainViewModel(
                     }
                 }
 
-                // E) Delete User Profile Document
+                // F) Delete User Profile Document
                 userDocRef.delete().await()
 
-                // F) Delete Auth Account
+                // G) Delete Auth Account
                 user.delete().await()
 
-                // G) Optional: Delete Local Data
+                // H) Optional: Delete Local Data
                 if (deleteLocalData) {
                     repository.clearAllLocalData()
                 }
@@ -1019,6 +1039,7 @@ class MainViewModel(
                 onSuccess()
             } catch (e: Exception) {
                 if (e is com.google.firebase.auth.FirebaseAuthRecentLoginRequiredException) {
+                    // Pass specific string for UI to handle
                     onError("Re-authentication required")
                 } else {
                     Log.e("MainViewModel", "Delete account failed", e)
@@ -1044,7 +1065,7 @@ class MainViewModel(
                 .await()
     }
 
-    // Incoming INVITES list (UI can keep using this; we now emit LIST_INVITE + uuid)
+    // Incoming INVITES list
     fun getIncomingSharedLists(): Flow<List<SharedListInvite>> = callbackFlow {
         val uid = FirebaseAuth.getInstance().currentUser?.uid
         if (uid == null) {
@@ -1068,9 +1089,6 @@ class MainViewModel(
                                 val fromName = data["fromName"]?.toString() ?: "Unknown"
                                 val listName = data["listName"]?.toString() ?: "Shared List"
                                 val uuid = data["uuid"]?.toString() ?: return@mapNotNull null
-
-                                // listId is no longer meaningful in the shared-first model; set to
-                                // 0
                                 SharedListInvite(fromUid, fromName, 0L, listName, uuid)
                             }
                                     ?: emptyList()
@@ -1130,24 +1148,15 @@ class MainViewModel(
         awaitClose { listsListener.remove() }
     }
 
-    suspend fun onSwipeDeleteList(
-            db: FirebaseFirestore, // not needed by your current impls, kept for signature
-            // compatibility
-            listUuid: String,
-            isOwner: Boolean
-    ) {
+    suspend fun onSwipeDeleteList(db: FirebaseFirestore, listUuid: String, isOwner: Boolean) {
         if (isOwner) {
-            // Owner deletes the whole list (everyone loses access next sync)
             stopSharingForEveryone(listUuid)
             return
         }
-
-        // Non-owner: find local mirror to get the Room listId
         val local = repository.getTaskLists().first().firstOrNull { it.uuid == listUuid }
         if (local != null) {
             leaveSharedList(local.id)
         } else {
-            // Fallback: no local mirror found — directly mark removed on the server
             val me = FirebaseAuth.getInstance().currentUser ?: return
             FirebaseFirestore.getInstance()
                     .collection("sharedLists")
@@ -1161,12 +1170,11 @@ class MainViewModel(
                             )
                     )
                     .await()
-            // Optionally also prune any stray local cache state here if you maintain one
         }
     }
     // </editor-fold>
 
-    // <editor-fold desc="📤 Export/Share as .prioritizer">
+    // <editor-fold desc="Export/Share as .prioritizer">
     fun shareList(context: Context, id: Long) {
         viewModelScope.launch {
             val list = repository.getTaskListById(id) ?: return@launch
@@ -1190,7 +1198,7 @@ class MainViewModel(
     }
     // </editor-fold>
 
-    // <editor-fold desc="🔥 FIRESTORE SYNC HELPERS">
+    // <editor-fold desc="FIRESTORE SYNC HELPERS">
     private suspend fun syncListToFirestore(list: TaskListEntity) {
         val user = FirebaseAuth.getInstance().currentUser ?: return
         if (!user.providerData.any { it.providerId == "google.com" }) return
@@ -1238,10 +1246,8 @@ class MainViewModel(
                         "priority" to task.priority,
                         "done" to task.done,
                         "listId" to task.listId,
-                        // actor + timestamps
                         "updatedBy" to user.uid,
                         "updatedAt" to FieldValue.serverTimestamp(),
-                        // harmless on updates; ensures createdBy exists on first write
                         "createdBy" to user.uid
                 )
 
@@ -1299,7 +1305,7 @@ class MainViewModel(
 
     // </editor-fold>
 
-    // <editor-fold desc="👤 USER PROFILE MANAGEMENT (unchanged except minor robustness)">
+    // <editor-fold desc="USER PROFILE MANAGEMENT">
     private val _userProfile = MutableStateFlow<UserProfile?>(null)
     val userProfile: StateFlow<UserProfile?> = _userProfile.asStateFlow()
 
@@ -1409,8 +1415,7 @@ class MainViewModel(
         restoreJob =
                 viewModelScope.launch {
                     // If not logged in (guest path), tell the guard we're done deciding so it can
-                    // seed if
-                    // needed.
+                    // seed if needed.
                     if (user == null) {
                         markInitialRestoreDone()
                         return@launch
@@ -1460,7 +1465,7 @@ class MainViewModel(
                         }
 
                         // --- 2) Import lists ---
-                        val toStartMirrors = mutableSetOf<String>() // add near start of restore
+                        val toStartMirrors = mutableSetOf<String>()
                         var importedCount = 0
                         val listsSnap =
                                 firestore
@@ -1492,13 +1497,10 @@ class MainViewModel(
                                             localLists.firstOrNull { local ->
                                                 !local.isShared &&
                                                         local.name == name &&
-                                                        local.ownerId !=
-                                                                uid // Candidate for merging
-                                                // (guest/other)
+                                                        local.ownerId != uid
                                             }
 
                                     if (existing != null) {
-                                        // MERGE: Update local list to match remote identity
                                         val updated = existing.copy(uuid = uuid, ownerId = uid)
                                         repository.updateTaskList(updated)
                                         existing = updated
@@ -1697,7 +1699,7 @@ class MainViewModel(
     }
     // </editor-fold>
 
-    // <editor-fold desc="🤝 FRIEND MANAGEMENT (flat model)">
+    // <editor-fold desc="FRIEND MANAGEMENT (flat model)">
     fun getFriendList(): Flow<List<FriendProfile>> = callbackFlow {
         val uid = FirebaseAuth.getInstance().currentUser?.uid
         if (uid.isNullOrBlank()) {
@@ -1796,13 +1798,21 @@ class MainViewModel(
     }
     // </editor-fold>
 
-    // <editor-fold desc="📨 FRIEND REQUESTS">
-    fun sendFriendRequest(toCode: String) {
-        val currentUser = FirebaseAuth.getInstance().currentUser ?: return
+    // <editor-fold desc="FRIEND REQUESTS">
+    fun sendFriendRequest(toCode: String, onResult: (Boolean, String?) -> Unit) {
+        val currentUser = FirebaseAuth.getInstance().currentUser
+        if (currentUser == null) {
+            onResult(false, "Not logged in")
+            return
+        }
         val firestore = FirebaseFirestore.getInstance()
 
         viewModelScope.launch {
-            val senderProfile = db.userProfileDao().getProfile() ?: return@launch
+            val senderProfile = db.userProfileDao().getProfile()
+            if (senderProfile == null) {
+                onResult(false, "Local profile not found")
+                return@launch
+            }
 
             firestore
                     .collection("users")
@@ -1810,10 +1820,15 @@ class MainViewModel(
                     .limit(1)
                     .get()
                     .addOnSuccessListener { result ->
-                        if (!result.isEmpty) {
+                        if (result.isEmpty) {
+                            onResult(false, "User not found")
+                        } else {
                             val recipientDoc = result.documents.first()
                             val recipientUid = recipientDoc.id
-                            if (recipientUid == currentUser.uid) return@addOnSuccessListener
+                            if (recipientUid == currentUser.uid) {
+                                onResult(false, "Cannot add yourself")
+                                return@addOnSuccessListener
+                            }
 
                             val request =
                                     mapOf(
@@ -1822,22 +1837,35 @@ class MainViewModel(
                                             "profileImageUrl" to senderProfile.profileImageRemoteUrl
                                     )
 
-                            // Incoming (recipient owns)
-                            firestore
-                                    .collection("friend_requests")
-                                    .document(recipientUid)
-                                    .collection("incoming")
-                                    .document(currentUser.uid)
-                                    .set(request)
+                            val batch = firestore.batch()
 
-                            // Outgoing (sender owns)  ← NEW
-                            firestore
-                                    .collection("friend_requests")
-                                    .document(currentUser.uid)
-                                    .collection("outgoing")
-                                    .document(recipientUid)
-                                    .set(request)
+                            // Incoming (recipient owns)
+                            val incomingRef =
+                                    firestore
+                                            .collection("friend_requests")
+                                            .document(recipientUid)
+                                            .collection("incoming")
+                                            .document(currentUser.uid)
+                            batch.set(incomingRef, request)
+
+                            // Outgoing (sender owns)
+                            val outgoingRef =
+                                    firestore
+                                            .collection("friend_requests")
+                                            .document(currentUser.uid)
+                                            .collection("outgoing")
+                                            .document(recipientUid)
+                            batch.set(outgoingRef, request)
+
+                            batch.commit()
+                                    .addOnSuccessListener { onResult(true, null) }
+                                    .addOnFailureListener { e ->
+                                        onResult(false, e.message ?: "Failed to send request")
+                                    }
                         }
+                    }
+                    .addOnFailureListener { e ->
+                        onResult(false, e.message ?: "Error searching for user")
                     }
         }
     }
@@ -1965,7 +1993,7 @@ class MainViewModel(
     }
     // </editor-fold>
 
-    // <editor-fold desc="🔧 UTILITIES">
+    // <editor-fold desc="UTILITIES">
     private suspend fun downloadImageBytes(url: String): ByteArray =
             withContext(Dispatchers.IO) { URL(url).openStream().use { it.readBytes() } }
 
@@ -1982,10 +2010,8 @@ class MainViewModel(
     private suspend fun resolveUserListDocId(uid: String, list: TaskListEntity): String {
         val db = FirebaseFirestore.getInstance()
 
-        // Prefer uuid (or refUuid for old refs). If none, fall back to local id.
         val uuid = list.uuid
         if (!uuid.isNullOrBlank()) {
-            // Try match on "uuid"
             val byUuid =
                     db.collection("users")
                             .document(uid)
@@ -1996,7 +2022,6 @@ class MainViewModel(
                             .await()
             if (!byUuid.isEmpty) return byUuid.documents.first().id
 
-            // Try match on "refUuid" (older references)
             val byRef =
                     db.collection("users")
                             .document(uid)
@@ -2008,7 +2033,6 @@ class MainViewModel(
             if (!byRef.isEmpty) return byRef.documents.first().id
         }
 
-        // Fallback: use local Room id as doc id (creates new doc if none existed)
         return list.id.toString()
     }
 
@@ -2079,7 +2103,7 @@ class MainViewModel(
             val toDelete = group.filter { it.id != keep.id }
             if (toDelete.isEmpty()) return
 
-            // Make sure any shared mirror writes target the kept row (prevents FK 787)
+            // Make sure any shared mirror writes target the kept row
             restartSharedMirrorIfNeeded(keep)
 
             // If current selection points at a soon-to-be-deleted list, move it to the kept one

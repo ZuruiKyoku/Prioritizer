@@ -130,7 +130,8 @@ service cloud.firestore {
 
     // -------- users/{uid}/lists/{localListId} --------
     match /users/{uid} {
-      allow get: if isSelf(uid);
+      // Allow finding friends (Note: exposes public profile)
+      allow get, list: if signedIn();
       
       // ✅ Allow creating/updating/deleting their own profile doc
   		allow create, update, delete: if isSelf(uid);
@@ -165,22 +166,37 @@ service cloud.firestore {
       allow get, list: if signedIn()
         && (resource.data.userId == request.auth.uid || resource.data.friendUid == request.auth.uid);
 
-      allow create, update, delete: if signedIn()
+      // Create/Update: check NEW data (request.resource.data)
+      allow create, update: if signedIn()
         && (request.resource.data.userId == request.auth.uid || request.resource.data.friendUid == request.auth.uid)
         && request.resource.data.keys().hasAll(['userId','friendUid']);
+
+      // Delete: check EXISTING data (resource.data)
+      allow delete: if signedIn()
+        && (resource.data.userId == request.auth.uid || resource.data.friendUid == request.auth.uid);
     }
 
     // -------- friend_requests/{uid} --------
     match /friend_requests/{uid} {
+      // Allow user to delete their own request container (needed for account deletion)
+      allow delete: if isSelf(uid);
+
       match /incoming/{fromUid} {
-        allow get, list, delete: if isSelf(uid);
-        allow create: if signedIn()
+        // Allow recipient to read/list/delete
+        // AND allow sender to delete (e.g. when sender deletes account/cancels request)
+        allow get, list: if isSelf(uid);
+        allow delete: if isSelf(uid) || (signedIn() && request.auth.uid == fromUid);
+
+        // Allow sender to create OR update their request
+        allow create, update: if signedIn()
           && request.auth.uid == fromUid
           && request.resource.data.uid == fromUid;
       }
       match /outgoing/{toUid} {
         allow get, list, delete: if isSelf(uid);
-        allow create: if isSelf(uid) && request.resource.data.uid == uid;
+        // Allow sender to create OR update their own outgoing record
+        allow create, update: if isSelf(uid)
+          && request.resource.data.uid == uid;
       }
     }
   }

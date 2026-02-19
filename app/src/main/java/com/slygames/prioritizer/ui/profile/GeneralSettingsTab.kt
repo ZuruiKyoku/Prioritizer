@@ -38,7 +38,6 @@ fun GeneralSettingsTab(
         onToggleAutoSwitch: (Boolean) -> Unit,
         viewModel: MainViewModel = viewModel(),
         onLogout: () -> Unit,
-        onDeleteAccount: () -> Unit
 ) {
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
@@ -159,25 +158,6 @@ fun GeneralSettingsTab(
                         ) { Text("Log Out", color = MaterialTheme.colorScheme.onSecondary) }
 
                         Spacer(Modifier.height(12.dp))
-
-                        // --- Delete Account Button ---
-                        Button(
-                                onClick = onDeleteAccount,
-                                colors =
-                                        ButtonDefaults.buttonColors(
-                                                containerColor = MaterialTheme.colorScheme.error
-                                        ),
-                                modifier = Modifier.fillMaxWidth().height(48.dp)
-                        ) { Text("Delete Account", color = MaterialTheme.colorScheme.onError) }
-
-                        Spacer(Modifier.height(26.dp))
-
-                        val context = LocalContext.current
-                        val versionName =
-                                context.packageManager.getPackageInfo(context.packageName, 0)
-                                        .versionName
-
-                        Text(text = "Ver: $versionName", modifier = Modifier.height(24.dp))
                 }
         }
 }

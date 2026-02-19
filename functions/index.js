@@ -461,6 +461,74 @@ exports.notifyOwnerWhenMemberJoins = onDocumentWritten(
   }
 );
 
+// cleanup: When a member is removed from a shared list, delete the reference in users/{uid}/lists
+exports.cleanupUserListRefOnRemoval = onDocumentWritten(
+  "sharedLists/{uuid}/sharedWith/{uid}",
+  async (event) => {
+    const { uuid, uid } = event.params;
+    const after = event.data?.after?.data();
+    const before = event.data?.before?.data();
+
+    // Check if removed:
+    // 1. Document deleted (after is null)
+    // 2. Status changed to 'removed'
+    const isDeleted = !after;
+    const isRemovedStatus = after && after.status === "removed";
+
+    // If not deleted and not removed status, do nothing
+    if (!isDeleted && !isRemovedStatus) return;
+
+    // Double check it wasn't ALREADY removed/deleted (idempotency)
+    // If before was already removed/null, we might have already run.
+    // But if before was "pending" or "accepted", and now is "removed", we run.
+    if (!isDeleted && before && before.status === "removed") return;
+
+    // Perform cleanup
+    const db = getFirestore();
+    console.log(`Cleaning up list ref for user ${uid} (list ${uuid})`);
+
+    try {
+      // The user stores references in users/{uid}/lists
+      // The doc might be keyed by 'uuid' or 'refUuid' = uuid.
+      // Usually the doc ID is random or the same as the shared list ID.
+      // We search for it.
+      const userListsRef = db.collection("users").doc(uid).collection("lists");
+
+      // Query by 'uuid' matches
+      const byUuid = await userListsRef.where("uuid", "==", uuid).get();
+      // Query by 'refUuid' matches (legacy/mirror logic)
+      const byRefUuid = await userListsRef.where("refUuid", "==", uuid).get();
+
+      const batch = db.batch();
+      let deleteCount = 0;
+
+      byUuid.forEach((doc) => {
+        batch.delete(doc.ref);
+        deleteCount++;
+      });
+      byRefUuid.forEach((doc) => {
+        // Avoid deleting same doc twice if queries overlap
+        // (Firestore batch.delete handles same ref ok, but let's be safe)
+        // Note: Firestore query results are disjoint unless we merge them manually? 
+        // Actually, a doc has either uuid OR refUuid usually, or both? 
+        // Just delete by ref.
+        batch.delete(doc.ref);
+        deleteCount++;
+      });
+
+      if (deleteCount > 0) {
+        await batch.commit();
+        console.log(`Deleted ${deleteCount} list references for user ${uid}`);
+      } else {
+        console.log(`No local list references found for user ${uid} to delete.`);
+      }
+
+    } catch (err) {
+      console.error("Failed to cleanup user list reference:", err);
+    }
+  }
+);
+
 // Notify when a task's PRIORITY changes (include X -> Y and task name)
 exports.notifyOnTaskPriorityChanged = onDocumentUpdated(
   "sharedLists/{uuid}/tasks/{taskId}",

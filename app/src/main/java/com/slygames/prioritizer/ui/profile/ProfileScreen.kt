@@ -45,7 +45,8 @@ fun ProfileScreen(onLogout: () -> Unit) {
     val scope = rememberCoroutineScope()
     val userPrefs = (context.applicationContext as PrioritizerApp).userPrefs
     var selectedTab by rememberSaveable { mutableStateOf(0) }
-    val tabs = listOf("General", "Friends")
+    val tabs = listOf("General", "Friends", "About")
+    val isDarkMode by userPrefs.isDarkModeFlow.collectAsStateWithLifecycle(initialValue = false)
 
     val db = remember { AppDatabase.getInstance(context) }
     val dao = remember { db.taskDao() }
@@ -58,6 +59,7 @@ fun ProfileScreen(onLogout: () -> Unit) {
 
     var showEditDialog by remember { mutableStateOf(false) }
     var showDeleteAccountDialog by remember { mutableStateOf(false) }
+    var showReauthDialog by remember { mutableStateOf(false) }
     var isDeleting by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
     var friendCode by remember { mutableStateOf<String?>(null) }
@@ -213,9 +215,14 @@ fun ProfileScreen(onLogout: () -> Unit) {
                                         scope.launch { userPrefs.setAutoSwitch(newMode) }
                                     },
                                     onLogout = onLogout,
-                                    onDeleteAccount = { showDeleteAccountDialog = true }
                             )
                     1 -> FriendsTab(viewModel)
+                    2 ->
+                            AboutTab(
+                                    viewModel,
+                                    onDeleteAccount = { showDeleteAccountDialog = true },
+                                    initialDarkMode = isDarkMode
+                            )
                 }
             }
         }
@@ -275,8 +282,16 @@ fun ProfileScreen(onLogout: () -> Unit) {
                                             },
                                             onError = { error ->
                                                 isDeleting = false
-                                                Toast.makeText(context, error, Toast.LENGTH_LONG)
-                                                        .show()
+                                                if (error == "Re-authentication required") {
+                                                    showReauthDialog = true
+                                                } else {
+                                                    Toast.makeText(
+                                                                    context,
+                                                                    error,
+                                                                    Toast.LENGTH_LONG
+                                                            )
+                                                            .show()
+                                                }
                                             }
                                     )
                                 },
@@ -288,6 +303,26 @@ fun ProfileScreen(onLogout: () -> Unit) {
                     },
                     dismissButton = {
                         TextButton(onClick = { showDeleteAccountDialog = false }) { Text("Cancel") }
+                    }
+            )
+        }
+
+        if (showReauthDialog) {
+            AlertDialog(
+                    onDismissRequest = { /* Force action */},
+                    title = { Text("Security Check") },
+                    text = {
+                        Text(
+                                "For your security, you must log in again before you can delete your account. We will log you out now."
+                        )
+                    },
+                    confirmButton = {
+                        Button(
+                                onClick = {
+                                    showReauthDialog = false
+                                    onLogout()
+                                }
+                        ) { Text("Log Out & Retry") }
                     }
             )
         }
