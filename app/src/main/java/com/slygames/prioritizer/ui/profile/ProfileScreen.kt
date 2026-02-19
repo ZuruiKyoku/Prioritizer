@@ -243,23 +243,29 @@ fun ProfileScreen(onLogout: () -> Unit) {
         }
 
         if (showDeleteAccountDialog) {
+            val isGuest = FirebaseAuth.getInstance().currentUser == null
             var deleteLocalData by remember { mutableStateOf(false) }
 
             AlertDialog(
                     onDismissRequest = { showDeleteAccountDialog = false },
-                    title = { Text("Delete Account") },
+                    title = { Text(if (isGuest) "Delete All Data" else "Delete Account") },
                     text = {
                         Column {
                             Text(
-                                    "Are you sure you want to delete your account? This will permanently delete your shared lists, profile, and remove you from other lists. This action cannot be undone."
+                                    if (isGuest)
+                                            "Are you sure you want to delete all your data? This will permanently remove all your lists and settings from this device. This action cannot be undone."
+                                    else
+                                            "Are you sure you want to delete your account? This will permanently delete your shared lists, profile, and remove you from other lists. This action cannot be undone."
                             )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(
-                                        checked = deleteLocalData,
-                                        onCheckedChange = { deleteLocalData = it }
-                                )
-                                Text("Delete local data from this device?")
+                            if (!isGuest) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(
+                                            checked = deleteLocalData,
+                                            onCheckedChange = { deleteLocalData = it }
+                                    )
+                                    Text("Delete local data from this device?")
+                                }
                             }
                         }
                     },
@@ -268,38 +274,56 @@ fun ProfileScreen(onLogout: () -> Unit) {
                                 onClick = {
                                     showDeleteAccountDialog = false
                                     isDeleting = true // Show loading
-                                    viewModel.deleteAccount(
-                                            deleteLocalData = deleteLocalData,
-                                            onSuccess = {
-                                                scope.launch {
-                                                    userPrefs.setLoggedIn(false)
-                                                    userPrefs.setLoginType("")
-                                                    // Dismiss loading is implicit by navigating
-                                                    // away/logout
-                                                    isDeleting = false
-                                                    onLogout() // Navigate to login
-                                                }
-                                            },
-                                            onError = { error ->
+                                    if (isGuest) {
+                                        viewModel.deleteGuestData(context) {
+                                            scope.launch {
+                                                onLogout() // Navigate to login
                                                 isDeleting = false
-                                                if (error == "Re-authentication required") {
-                                                    showReauthDialog = true
-                                                } else {
-                                                    Toast.makeText(
-                                                                    context,
-                                                                    error,
-                                                                    Toast.LENGTH_LONG
-                                                            )
-                                                            .show()
-                                                }
                                             }
-                                    )
+                                        }
+                                    } else {
+                                        viewModel.deleteAccount(
+                                                context = context,
+                                                deleteLocalData = deleteLocalData,
+                                                onSuccess = {
+                                                    scope.launch {
+                                                        if (deleteLocalData) {
+                                                            // Full wipe -> Logout
+                                                            onLogout()
+                                                        } else {
+                                                            // Keep local -> Guest mode
+                                                            isDeleting = false
+                                                            showDeleteAccountDialog = false
+                                                            Toast.makeText(
+                                                                            context,
+                                                                            "Switched to Guest Mode",
+                                                                            Toast.LENGTH_LONG
+                                                                    )
+                                                                    .show()
+                                                        }
+                                                    }
+                                                },
+                                                onError = { error ->
+                                                    isDeleting = false
+                                                    if (error == "Re-authentication required") {
+                                                        showReauthDialog = true
+                                                    } else {
+                                                        Toast.makeText(
+                                                                        context,
+                                                                        error,
+                                                                        Toast.LENGTH_LONG
+                                                                )
+                                                                .show()
+                                                    }
+                                                }
+                                        )
+                                    }
                                 },
                                 colors =
                                         ButtonDefaults.buttonColors(
                                                 containerColor = MaterialTheme.colorScheme.error
                                         )
-                        ) { Text("Delete Forever") }
+                        ) { Text(if (isGuest) "Delete Data" else "Delete Forever") }
                     },
                     dismissButton = {
                         TextButton(onClick = { showDeleteAccountDialog = false }) { Text("Cancel") }

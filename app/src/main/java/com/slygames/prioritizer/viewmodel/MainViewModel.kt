@@ -934,7 +934,12 @@ class MainViewModel(
      * 4. Deletes user profile.
      * 5. Deletes Auth account.
      */
-    fun deleteAccount(deleteLocalData: Boolean, onSuccess: () -> Unit, onError: (String) -> Unit) {
+    fun deleteAccount(
+            context: Context,
+            deleteLocalData: Boolean,
+            onSuccess: () -> Unit,
+            onError: (String) -> Unit
+    ) {
         viewModelScope.launch {
             val user = FirebaseAuth.getInstance().currentUser
             if (user == null) {
@@ -993,7 +998,6 @@ class MainViewModel(
                 requestsRef.delete().await()
 
                 // 3. Delete requests I sent to others (stored in their 'incoming')
-                // Note: This requires a Collection Group Index on 'incoming' for field 'uid'
                 try {
                     val sentToOthers =
                             db.collectionGroup("incoming").whereEqualTo("uid", uid).get().await()
@@ -1031,20 +1035,84 @@ class MainViewModel(
                 // G) Delete Auth Account
                 user.delete().await()
 
-                // H) Optional: Delete Local Data
+                // H) Handle Local Data & Logout Logic
+                try {
+                    com.google.android.gms.auth.api.signin.GoogleSignIn.getClient(
+                                    context,
+                                    com.google.android.gms.auth.api.signin.GoogleSignInOptions
+                                            .DEFAULT_SIGN_IN
+                            )
+                            .signOut()
+                } catch (e: Exception) {
+                    // Ignore signer out errors
+                }
+
                 if (deleteLocalData) {
+                    // Full Wipe
+                    val currentProfile = this@MainViewModel.db.userProfileDao().getProfile()
+                    deleteOldProfileImage(currentProfile?.profileImagePath)
+
                     repository.clearAllLocalData()
+                    this@MainViewModel.db.userProfileDao().clearProfile()
+                    prefs.clearForLogout()
+                    _userProfile.value = null
+                    _selectedListId.value = null
+                } else {
+                    // Keep Local -> Switch to Guest
+                    val currentProfile = this@MainViewModel.db.userProfileDao().getProfile()
+                    if (currentProfile != null) {
+                        val updated = currentProfile.copy(profileImageRemoteUrl = null)
+                        this@MainViewModel.db.userProfileDao().saveProfile(updated)
+                        _userProfile.value = updated
+                    }
+                    prefs.switchToGuestMode()
                 }
 
                 onSuccess()
             } catch (e: Exception) {
                 if (e is com.google.firebase.auth.FirebaseAuthRecentLoginRequiredException) {
-                    // Pass specific string for UI to handle
                     onError("Re-authentication required")
                 } else {
                     Log.e("MainViewModel", "Delete account failed", e)
                     onError(e.message ?: "Unknown error during deletion")
                 }
+            }
+        }
+    }
+
+    fun deleteGuestData(context: Context, onSuccess: () -> Unit) {
+        viewModelScope.launch {
+            try {
+                // 1. Delete Profile Image
+                val currentProfile = this@MainViewModel.db.userProfileDao().getProfile()
+                deleteOldProfileImage(currentProfile?.profileImagePath)
+
+                // 2. Clear DB
+                repository.clearAllLocalData()
+                this@MainViewModel.db.userProfileDao().clearProfile()
+
+                // 3. Clear Prefs
+                prefs.clearForLogout()
+
+                // 4. Reset State
+                _userProfile.value = null
+                _selectedListId.value = null
+
+                // 5. Ensure Google Sign Out (just in case)
+                try {
+                    com.google.android.gms.auth.api.signin.GoogleSignIn.getClient(
+                                    context,
+                                    com.google.android.gms.auth.api.signin.GoogleSignInOptions
+                                            .DEFAULT_SIGN_IN
+                            )
+                            .signOut()
+                } catch (e: Exception) {
+                    // Ignore
+                }
+
+                onSuccess()
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Guest wipe failed", e)
             }
         }
     }
@@ -1322,11 +1390,11 @@ class MainViewModel(
             var firebaseImageUrl: String? = oldProfile?.profileImageRemoteUrl
             var localPath: String? = oldProfile?.profileImagePath
 
-            val currentUser = FirebaseAuth.getInstance().currentUser ?: return@launch
+            val currentUser = FirebaseAuth.getInstance().currentUser
 
             if (imageBytes != null) {
-                // Delete old Firebase image if applicable
-                if (firebaseImageUrl?.contains("firebase") == true) {
+                // Delete old Firebase image if applicable (only if logged in)
+                if (currentUser != null && firebaseImageUrl?.contains("firebase") == true) {
                     try {
                         val previousRef =
                                 FirebaseStorage.getInstance().getReferenceFromUrl(firebaseImageUrl)
@@ -1337,27 +1405,37 @@ class MainViewModel(
                 // Save locally
                 localPath = saveProfileImageToInternalStorage(context, imageBytes)
 
-                // Upload new
-                val filename = "profile_${currentUser.uid}_${System.currentTimeMillis()}.jpg"
-                val ref = FirebaseStorage.getInstance().reference.child("profile_images/$filename")
-                try {
-                    val result =
-                            ref.putBytes(imageBytes)
-                                    .continueWithTask { task ->
-                                        if (!task.isSuccessful)
-                                                throw task.exception ?: Exception("Upload failed")
-                                        ref.downloadUrl
-                                    }
-                                    .await()
-                    firebaseImageUrl = result.toString()
-                } catch (_: Exception) {
+                // Upload new (only if logged in)
+                if (currentUser != null) {
+                    val filename = "profile_${currentUser.uid}_${System.currentTimeMillis()}.jpg"
+                    val ref =
+                            FirebaseStorage.getInstance()
+                                    .reference
+                                    .child("profile_images/$filename")
+                    try {
+                        val result =
+                                ref.putBytes(imageBytes)
+                                        .continueWithTask { task ->
+                                            if (!task.isSuccessful)
+                                                    throw task.exception
+                                                            ?: Exception("Upload failed")
+                                            ref.downloadUrl
+                                        }
+                                        .await()
+                        firebaseImageUrl = result.toString()
+                    } catch (_: Exception) {
+                        firebaseImageUrl = null
+                    }
+                } else {
                     firebaseImageUrl = null
                 }
             } else {
                 deleteOldProfileImage(localPath)
                 localPath = null
                 firebaseImageUrl = null
-                deleteProfileImageFromFirebase()
+                if (currentUser != null) {
+                    deleteProfileImageFromFirebase()
+                }
             }
 
             val updatedProfile =
@@ -1372,18 +1450,20 @@ class MainViewModel(
             _userProfile.value = updatedProfile
             db.userProfileDao().saveProfile(updatedProfile)
 
-            // Push metadata to Firestore
-            FirebaseFirestore.getInstance()
-                    .collection("users")
-                    .document(currentUser.uid)
-                    .set(
-                            mapOf(
-                                    "displayName" to nickname,
-                                    "profileImageUrl" to firebaseImageUrl,
-                                    "friendCode" to updatedProfile.friendCode
-                            ),
-                            SetOptions.merge()
-                    )
+            // Push metadata to Firestore (only if logged in)
+            if (currentUser != null) {
+                FirebaseFirestore.getInstance()
+                        .collection("users")
+                        .document(currentUser.uid)
+                        .set(
+                                mapOf(
+                                        "displayName" to nickname,
+                                        "profileImageUrl" to firebaseImageUrl,
+                                        "friendCode" to updatedProfile.friendCode
+                                ),
+                                SetOptions.merge()
+                        )
+            }
 
             loadUserProfile()
         }

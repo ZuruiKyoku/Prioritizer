@@ -22,24 +22,21 @@ class UserPreferences(private val context: Context) {
     }
 
     // --- DARK MODE ---
-    val isDarkModeFlow: Flow<Boolean> = context.userPrefs.data
-        .map { it[IS_DARK_MODE] ?: false }
+    val isDarkModeFlow: Flow<Boolean> = context.userPrefs.data.map { it[IS_DARK_MODE] ?: false }
 
     suspend fun setDarkMode(enabled: Boolean) {
         context.userPrefs.edit { it[IS_DARK_MODE] = enabled }
     }
 
     // --- Auto Switch ---
-    val isAutoSwitch: Flow<Boolean> = context.userPrefs.data
-        .map { it[IS_AUTO_SWITCH] ?: false }
+    val isAutoSwitch: Flow<Boolean> = context.userPrefs.data.map { it[IS_AUTO_SWITCH] ?: false }
 
     suspend fun setAutoSwitch(enabled: Boolean) {
         context.userPrefs.edit { it[IS_AUTO_SWITCH] = enabled }
     }
 
     // --- LOGIN ---
-    val isLoggedInFlow: Flow<Boolean> = context.userPrefs.data
-        .map { it[IS_LOGGED_IN] ?: false }
+    val isLoggedInFlow: Flow<Boolean> = context.userPrefs.data.map { it[IS_LOGGED_IN] ?: false }
 
     suspend fun setLoggedIn(loggedIn: Boolean) {
         context.userPrefs.edit { it[IS_LOGGED_IN] = loggedIn }
@@ -58,28 +55,50 @@ class UserPreferences(private val context: Context) {
     }
 
     // UserPreferences.kt
-    val loginTypeFlow: Flow<String?> = context.userPrefs.data
-        .map { it[LOGIN_TYPE] }
+    val loginTypeFlow: Flow<String?> = context.userPrefs.data.map { it[LOGIN_TYPE] }
 
     // --- LAST SELECTED LIST ---
-    val lastSelectedListIdFlow: Flow<Long?> = context.userPrefs.data
-        .map { it[LAST_SELECTED_LIST_ID] }
+    val lastSelectedListIdFlow: Flow<Long?> =
+            context.userPrefs.data.map { it[LAST_SELECTED_LIST_ID] }
 
     suspend fun setLastSelectedListId(id: Long) {
         context.userPrefs.edit { it[LAST_SELECTED_LIST_ID] = id }
     }
 
-    val nicknameFlow: Flow<String> = context.userPrefs.data
-        .map { it[NICKNAME_KEY] ?: "User" }
+    val nicknameFlow: Flow<String> = context.userPrefs.data.map { it[NICKNAME_KEY] ?: "User" }
 
     suspend fun setNickname(nickname: String) {
         context.userPrefs.edit { it[NICKNAME_KEY] = nickname }
     }
 
-    val profileImageUriFlow: Flow<String?> = context.userPrefs.data
-        .map { it[PROFILE_IMAGE_URI_KEY] }
+    val profileImageUriFlow: Flow<String?> =
+            context.userPrefs.data.map { it[PROFILE_IMAGE_URI_KEY] }
 
     suspend fun setProfileImageUri(uri: String) {
         context.userPrefs.edit { it[PROFILE_IMAGE_URI_KEY] = uri }
+    }
+
+    suspend fun clearForLogout() {
+        context.userPrefs.edit { preferences ->
+            // Keep Dark Mode & Auto Switch
+            val keptKeys = listOf(IS_DARK_MODE, IS_AUTO_SWITCH)
+            val toKeep = keptKeys.associateWith { preferences[it] }
+
+            preferences.clear()
+
+            // Restore kept
+            toKeep.forEach { (key, value) ->
+                if (value != null) {
+                    @Suppress("UNCHECKED_CAST") preferences[key as Preferences.Key<Any>] = value
+                }
+            }
+        }
+    }
+
+    suspend fun switchToGuestMode() {
+        context.userPrefs.edit {
+            it[LOGIN_TYPE] = "guest"
+            it[IS_LOGGED_IN] = true
+        }
     }
 }

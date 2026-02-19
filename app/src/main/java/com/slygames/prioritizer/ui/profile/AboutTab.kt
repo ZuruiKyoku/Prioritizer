@@ -22,7 +22,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.slygames.prioritizer.R
-
 import com.slygames.prioritizer.viewmodel.MainViewModel
 
 @Composable
@@ -165,6 +164,9 @@ fun AboutTab(
                         Spacer(modifier = Modifier.height(24.dp))
 
                         // --- Delete Account ---
+                        val isGuest =
+                                com.google.firebase.auth.FirebaseAuth.getInstance().currentUser ==
+                                        null
                         Button(
                                 onClick = onDeleteAccount,
                                 colors =
@@ -172,7 +174,12 @@ fun AboutTab(
                                                 containerColor = MaterialTheme.colorScheme.error
                                         ),
                                 modifier = Modifier.fillMaxWidth().height(48.dp)
-                        ) { Text("Delete Account", color = MaterialTheme.colorScheme.onError) }
+                        ) {
+                                Text(
+                                        if (isGuest) "Delete Data" else "Delete Account",
+                                        color = MaterialTheme.colorScheme.onError
+                                )
+                        }
 
                         Spacer(Modifier.height(16.dp))
 

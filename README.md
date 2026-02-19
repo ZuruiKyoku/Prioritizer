@@ -1,15 +1,18 @@
-# Prioritizer (Work in Progress)
+# Prioritizer (Beta)
 **Mobile Task Optimization & Priority Management**
 
 ### 📌 Overview
-Prioritizer is a productivity tool designed to streamline task management through a list system and urgency-based sorting. Built with **Android Studio** and **Material3**, it focuses on a "design-first" approach to help users visualize their most critical objectives without interface clutter.
+Prioritizer is a native Android application designed to streamline task management through an intelligent urgency-based sorting system. Built with **Kotlin** and **Jetpack Compose**, it utilizes an **offline-first** architecture to ensure seamless performance regardless of network connectivity, while synchronizing data across devices via the cloud.
 
 ### 🛠 Technical Pillars
 * **Platform:** Android (Kotlin)
-* **UI/UX Design:** Implementing **Material3** design components to ensure a modern, responsive, and accessible user experience.
-* **Architecture:** Focused on building a robust local database schema to handle rapid task entry, state persistence, and dynamic priority re-calculation. Also utilizing Firebase for sharing lists with friends to complete tasks together.
+* **UI/UX Design:** Modern, declarative UI built with **Jetpack Compose** and **Material3**, featuring strict state management and responsive layouts.
+* **Architecture:** robust **MVVM** architecture following **Clean Architecture** principles.
+    *   **Reactive Data Flow:** Utilizes **StateFlow** and **Coroutines** for efficient, unidirectional data flow (UDF).
+    *   **Data Layer:** Implements the **Repository Pattern** to arbitrate between a local **Room Database** (single source of truth) and **Firebase Firestore** for real-time cloud sync.
+*   **Backend Services:** leveraged **Firebase** ecosystem (Auth, Functions, Messaging) for serverless backend logic and push notifications.
 
 ### 🚀 Development Status
-* **Current Phase:** Working on finding and resolving bugs.
-* **Active Tasks:** When a user removes a shared list, the app crashes. Working on finding and fixing the issue.
-* **Next Milestone:** Unknown
+* **Current Phase:** Beta / Pre-Release
+* **Active Tasks:** Final polish for Google Play Store submission, including privacy compliance and edge-case handling for shared lists.
+* **Next Milestone:** v1.0 Public Launch
