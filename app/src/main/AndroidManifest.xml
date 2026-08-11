@@ -43,5 +43,12 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+        <!-- Used by the FCM SDK itself when it auto-displays a notification-payload message
+             while the app is backgrounded/killed (onMessageReceived is skipped in that case).
+             Keeps background delivery on the same channel as the foreground path in
+             AppFirebaseMessagingService, instead of falling back to FCM's generic channel. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="@string/default_notification_channel_id" />
     </application>
 </manifest>
