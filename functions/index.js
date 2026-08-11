@@ -220,9 +220,9 @@ exports.notifyOnTaskAdded = onDocumentCreated(
     if (!audienceList.length) return;
 
     const title = "New Task Added";
-    const body = task.title
-      ? `“${task.title}” added to ${meta.listName}`
-      : `A task was added to ${meta.listName}`;
+    const taskTitle = task.description || task.title || task.name || "A task";
+    const priorityStr = task.priority ? ` at priority ${task.priority}` : "";
+    const body = `“${taskTitle}” was added to ${meta.listName}${priorityStr}`;
 
     await sendMulticastToUids(audienceList, { title, body }, {
       type: "TASK_ADDED",
