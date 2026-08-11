@@ -16,7 +16,7 @@ import com.slygames.prioritizer.data.list.SharedListInvite
 import com.slygames.prioritizer.data.user.FriendProfile
 import com.slygames.prioritizer.ui.components.FriendRequestItem
 import com.slygames.prioritizer.ui.components.SharedListInviteItem
-import com.slygames.prioritizer.viewmodel.MainViewModel
+import com.slygames.prioritizer.viewmodel.RequestsViewModel
 import kotlinx.coroutines.delay
 
 @Composable
@@ -50,7 +50,7 @@ fun RequestsSummaryDialog(
 
 @Composable
 fun RequestsDetailDialog(
-        viewModel: MainViewModel,
+        viewModel: RequestsViewModel,
         friendRequests: List<FriendProfile>,
         sharedListInvites: List<SharedListInvite>,
         onAcceptFriend: (String) -> Unit,

@@ -1,22 +1,12 @@
 package com.slygames.prioritizer
 
 import android.app.Application
-import androidx.room.Room
-import com.slygames.prioritizer.data.AppDatabase
-import com.slygames.prioritizer.data.task.TaskRepository
-import com.slygames.prioritizer.data.user.UserPreferences
-import com.slygames.prioritizer.viewmodel.MainViewModel
+import dagger.hilt.android.HiltAndroidApp
 
-class PrioritizerApp : Application() {
-    lateinit var userPrefs: UserPreferences
-    lateinit var database: AppDatabase
-    lateinit var mainViewModel: MainViewModel
-
-    override fun onCreate() {
-        super.onCreate()
-
-        database = AppDatabase.getInstance(this)
-        userPrefs = UserPreferences(this)
-        mainViewModel = MainViewModel(TaskRepository(database.taskDao()), database, prefs = userPrefs)
-    }
-}
+/**
+ * All framework/singleton wiring (Room, Firebase, repositories) now lives in Hilt modules under
+ * `di/` -- this class no longer manually constructs a shared ViewModel or database instance (that
+ * used to cause duplicate Firestore listeners whenever a screen built its own separate
+ * MainViewModel instead of reusing this one).
+ */
+@HiltAndroidApp class PrioritizerApp : Application()

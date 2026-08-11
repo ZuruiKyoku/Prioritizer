@@ -3,6 +3,9 @@ package com.slygames.prioritizer.data.user
 import android.content.Context
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -10,7 +13,8 @@ import kotlinx.coroutines.flow.map
 // Shared DataStore instance
 val Context.userPrefs by preferencesDataStore(name = "user_prefs")
 
-class UserPreferences(private val context: Context) {
+@Singleton
+class UserPreferences @Inject constructor(@ApplicationContext private val context: Context) {
     companion object {
         private val IS_DARK_MODE = booleanPreferencesKey("is_dark_mode")
         private val IS_AUTO_SWITCH = booleanPreferencesKey("is_auto_switch")

@@ -25,46 +25,36 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
-import com.slygames.prioritizer.PrioritizerApp
-import com.slygames.prioritizer.data.AppDatabase
-import com.slygames.prioritizer.data.task.TaskRepository
 import com.slygames.prioritizer.ui.dialogs.EditProfileDialog
 import com.slygames.prioritizer.util.loadProfileImage
-import com.slygames.prioritizer.viewmodel.MainViewModel
-import com.slygames.prioritizer.viewmodel.MainViewModelFactory
+import com.slygames.prioritizer.viewmodel.ProfileViewModel
+import com.slygames.prioritizer.viewmodel.SettingsViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
-fun ProfileScreen(onLogout: () -> Unit) {
+fun ProfileScreen(
+        onLogout: () -> Unit,
+        profileViewModel: ProfileViewModel = hiltViewModel(),
+        settingsViewModel: SettingsViewModel = hiltViewModel()
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val userPrefs = (context.applicationContext as PrioritizerApp).userPrefs
     var selectedTab by rememberSaveable { mutableStateOf(0) }
     val tabs = listOf("General", "Friends", "About")
-    val isDarkMode by userPrefs.isDarkModeFlow.collectAsStateWithLifecycle(initialValue = false)
-
-    val db = remember { AppDatabase.getInstance(context) }
-    val dao = remember { db.taskDao() }
-    val repository = remember { TaskRepository(dao) }
-    val database = remember { AppDatabase.getInstance(context) }
-    val factory = remember {
-        MainViewModelFactory(appContext = context, taskRepository = repository, database = database)
-    }
-    val viewModel: MainViewModel = viewModel(factory = factory)
+    val isDarkMode by settingsViewModel.isDarkMode.collectAsStateWithLifecycle(initialValue = false)
+    val isAutoSwitch by settingsViewModel.isAutoSwitch.collectAsStateWithLifecycle(initialValue = false)
 
     var showEditDialog by remember { mutableStateOf(false) }
     var showDeleteAccountDialog by remember { mutableStateOf(false) }
     var showReauthDialog by remember { mutableStateOf(false) }
     var isDeleting by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
-    var friendCode by remember { mutableStateOf<String?>(null) }
 
-    val userProfile by viewModel.userProfile.collectAsStateWithLifecycle()
+    val userProfile by profileViewModel.userProfile.collectAsStateWithLifecycle()
 
     var reloadImageKey by remember { mutableStateOf(0) }
     val bitmap by
@@ -79,17 +69,6 @@ fun ProfileScreen(onLogout: () -> Unit) {
                         }
             }
 
-    LaunchedEffect(Unit) {
-        viewModel.loadUserProfile()
-        FirebaseAuth.getInstance().currentUser?.uid?.let { uid ->
-            FirebaseFirestore.getInstance()
-                    .collection("users")
-                    .document(uid)
-                    .get()
-                    .addOnSuccessListener { doc -> friendCode = doc.getString("friendCode") }
-        }
-    }
-
     Surface(
             color = MaterialTheme.colorScheme.background,
             modifier = Modifier.fillMaxSize().navigationBarsPadding().statusBarsPadding()
@@ -102,7 +81,6 @@ fun ProfileScreen(onLogout: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
             ) {
-                // Profile Picture
                 Box(
                         modifier =
                                 Modifier.size(80.dp)
@@ -116,11 +94,7 @@ fun ProfileScreen(onLogout: () -> Unit) {
                                 contentDescription = "Profile Picture",
                                 modifier =
                                         Modifier.fillMaxSize()
-                                                .border(
-                                                        2.dp,
-                                                        MaterialTheme.colorScheme.primary,
-                                                        CircleShape
-                                                )
+                                                .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
                         )
                     } else {
                         Icon(
@@ -129,35 +103,28 @@ fun ProfileScreen(onLogout: () -> Unit) {
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier =
                                         Modifier.size(64.dp)
-                                                .border(
-                                                        2.dp,
-                                                        MaterialTheme.colorScheme.primary,
-                                                        CircleShape
-                                                )
+                                                .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
                         )
                     }
                 }
 
                 Spacer(Modifier.width(16.dp))
 
-                // Nickname & login status
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                            text = userProfile?.nickname ?: "User",
-                            style = MaterialTheme.typography.titleMedium
-                    )
+                    Text(text = userProfile?.nickname ?: "User", style = MaterialTheme.typography.titleMedium)
                     Text(
                             text =
-                                    if (FirebaseAuth.getInstance().currentUser?.providerData?.any {
-                                                it.providerId == "google.com"
-                                            } == true
-                                    )
-                                            "Logged in via: Google"
-                                    else "Logged in as Guest",
+                                    when {
+                                        FirebaseAuth.getInstance().currentUser == null -> "Logged in as Guest"
+                                        FirebaseAuth.getInstance().currentUser?.providerData?.any {
+                                            it.providerId == "google.com"
+                                        } == true -> "Logged in via: Google"
+                                        else -> "Logged in via: Email"
+                                    },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    friendCode?.let { code ->
+                    userProfile?.friendCode?.takeIf { it.isNotBlank() }?.let { code ->
                         Spacer(Modifier.height(4.dp))
                         Text(
                                 text = "Your Friend Code: $code",
@@ -166,18 +133,12 @@ fun ProfileScreen(onLogout: () -> Unit) {
                                 modifier =
                                         Modifier.clickable {
                                             clipboard.setText(AnnotatedString(code))
-                                            Toast.makeText(
-                                                            context,
-                                                            "Friend code copied!",
-                                                            Toast.LENGTH_SHORT
-                                                    )
-                                                    .show()
+                                            Toast.makeText(context, "Friend code copied!", Toast.LENGTH_SHORT).show()
                                         }
                         )
                     }
                 }
 
-                // Edit Profile Button
                 TextButton(onClick = { showEditDialog = true }) {
                     Icon(Icons.Default.Edit, contentDescription = "Edit")
                     Spacer(Modifier.width(4.dp))
@@ -187,39 +148,27 @@ fun ProfileScreen(onLogout: () -> Unit) {
 
             Spacer(Modifier.height(24.dp))
 
-            // --- Tabs ---
-            TabRow(
-                    selectedTabIndex = selectedTab,
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-            ) {
+            TabRow(selectedTabIndex = selectedTab, containerColor = MaterialTheme.colorScheme.surfaceVariant) {
                 tabs.forEachIndexed { index, title ->
-                    Tab(
-                            selected = selectedTab == index,
-                            onClick = { selectedTab = index },
-                            text = { Text(title) }
-                    )
+                    Tab(selected = selectedTab == index, onClick = { selectedTab = index }, text = { Text(title) })
                 }
             }
 
             Spacer(Modifier.height(12.dp))
 
-            // --- Tab Content ---
             Box(Modifier.fillMaxWidth().weight(1f)) {
                 when (selectedTab) {
                     0 ->
                             GeneralSettingsTab(
-                                    onToggleDarkMode = { newMode ->
-                                        scope.launch { userPrefs.setDarkMode(newMode) }
-                                    },
-                                    onToggleAutoSwitch = { newMode ->
-                                        scope.launch { userPrefs.setAutoSwitch(newMode) }
-                                    },
+                                    isDarkMode = isDarkMode,
+                                    isAutoSwitch = isAutoSwitch,
+                                    onToggleDarkMode = { newMode -> settingsViewModel.setDarkMode(newMode) },
+                                    onToggleAutoSwitch = { newMode -> settingsViewModel.setAutoSwitch(newMode) },
                                     onLogout = onLogout,
                             )
-                    1 -> FriendsTab(viewModel)
+                    1 -> FriendsTab()
                     2 ->
                             AboutTab(
-                                    viewModel,
                                     onDeleteAccount = { showDeleteAccountDialog = true },
                                     initialDarkMode = isDarkMode
                             )
@@ -232,7 +181,7 @@ fun ProfileScreen(onLogout: () -> Unit) {
                     initialProfile = userProfile,
                     onDismiss = { showEditDialog = false },
                     onSave = { newNickname, imageBytes ->
-                        viewModel.updateUserProfile(newNickname, imageBytes, context)
+                        profileViewModel.updateProfile(newNickname, imageBytes)
                         scope.launch {
                             delay(100) // Give the file time to write
                             reloadImageKey++
@@ -260,10 +209,7 @@ fun ProfileScreen(onLogout: () -> Unit) {
                             if (!isGuest) {
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(
-                                            checked = deleteLocalData,
-                                            onCheckedChange = { deleteLocalData = it }
-                                    )
+                                    Checkbox(checked = deleteLocalData, onCheckedChange = { deleteLocalData = it })
                                     Text("Delete local data from this device?")
                                 }
                             }
@@ -273,61 +219,43 @@ fun ProfileScreen(onLogout: () -> Unit) {
                         Button(
                                 onClick = {
                                     showDeleteAccountDialog = false
-                                    isDeleting = true // Show loading
+                                    isDeleting = true
                                     if (isGuest) {
-                                        viewModel.deleteGuestData(context) {
+                                        profileViewModel.deleteGuestData {
                                             scope.launch {
-                                                onLogout() // Navigate to login
+                                                onLogout()
                                                 isDeleting = false
                                             }
                                         }
                                     } else {
-                                        viewModel.deleteAccount(
-                                                context = context,
+                                        profileViewModel.deleteAccount(
                                                 deleteLocalData = deleteLocalData,
                                                 onSuccess = {
                                                     scope.launch {
                                                         if (deleteLocalData) {
-                                                            // Full wipe -> Logout
                                                             onLogout()
                                                         } else {
-                                                            // Keep local -> Guest mode
                                                             isDeleting = false
                                                             showDeleteAccountDialog = false
-                                                            Toast.makeText(
-                                                                            context,
-                                                                            "Switched to Guest Mode",
-                                                                            Toast.LENGTH_LONG
-                                                                    )
-                                                                    .show()
+                                                            Toast.makeText(context, "Switched to Guest Mode", Toast.LENGTH_LONG).show()
                                                         }
                                                     }
                                                 },
                                                 onError = { error ->
                                                     isDeleting = false
-                                                    if (error == "Re-authentication required") {
+                                                    if (error == "For security, please log in again before continuing.") {
                                                         showReauthDialog = true
                                                     } else {
-                                                        Toast.makeText(
-                                                                        context,
-                                                                        error,
-                                                                        Toast.LENGTH_LONG
-                                                                )
-                                                                .show()
+                                                        Toast.makeText(context, error, Toast.LENGTH_LONG).show()
                                                     }
                                                 }
                                         )
                                     }
                                 },
-                                colors =
-                                        ButtonDefaults.buttonColors(
-                                                containerColor = MaterialTheme.colorScheme.error
-                                        )
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                         ) { Text(if (isGuest) "Delete Data" else "Delete Forever") }
                     },
-                    dismissButton = {
-                        TextButton(onClick = { showDeleteAccountDialog = false }) { Text("Cancel") }
-                    }
+                    dismissButton = { TextButton(onClick = { showDeleteAccountDialog = false }) { Text("Cancel") } }
             )
         }
 
@@ -335,11 +263,7 @@ fun ProfileScreen(onLogout: () -> Unit) {
             AlertDialog(
                     onDismissRequest = { /* Force action */},
                     title = { Text("Security Check") },
-                    text = {
-                        Text(
-                                "For your security, you must log in again before you can delete your account. We will log you out now."
-                        )
-                    },
+                    text = { Text("For your security, you must log in again before you can delete your account. We will log you out now.") },
                     confirmButton = {
                         Button(
                                 onClick = {
@@ -353,15 +277,8 @@ fun ProfileScreen(onLogout: () -> Unit) {
 
         if (isDeleting) {
             androidx.compose.ui.window.Dialog(onDismissRequest = {}) {
-                Surface(
-                        shape = MaterialTheme.shapes.medium,
-                        color = MaterialTheme.colorScheme.surface,
-                        tonalElevation = 8.dp
-                ) {
-                    Column(
-                            modifier = Modifier.padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
+                Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surface, tonalElevation = 8.dp) {
+                    Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator()
                         Spacer(Modifier.height(16.dp))
                         Text("Deleting account...", style = MaterialTheme.typography.bodyLarge)

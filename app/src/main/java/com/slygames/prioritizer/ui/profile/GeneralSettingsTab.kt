@@ -15,39 +15,26 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.google.firebase.auth.FirebaseAuth
-import com.slygames.prioritizer.PrioritizerApp
-import com.slygames.prioritizer.viewmodel.MainViewModel
-import kotlinx.coroutines.launch
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.slygames.prioritizer.viewmodel.ProfileViewModel
 
 @Composable
 fun GeneralSettingsTab(
+        isDarkMode: Boolean,
+        isAutoSwitch: Boolean,
         onToggleDarkMode: (Boolean) -> Unit,
         onToggleAutoSwitch: (Boolean) -> Unit,
-        viewModel: MainViewModel = viewModel(),
         onLogout: () -> Unit,
+        profileViewModel: ProfileViewModel = hiltViewModel(),
 ) {
-        val context = LocalContext.current
-        val scope = rememberCoroutineScope()
-        val userPrefs = (context.applicationContext as PrioritizerApp).userPrefs
-        val isDarkMode by userPrefs.isDarkModeFlow.collectAsState(initial = false)
-        val isAutoSwitch by userPrefs.isAutoSwitch.collectAsState(initial = false)
-
-        var nickname by rememberSaveable { mutableStateOf("") }
-        var showDialog by remember { mutableStateOf(false) }
-        var importInfo by remember { mutableStateOf(listOf<String>()) }
+        var isLoggingOut by remember { mutableStateOf(false) }
 
         Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
@@ -142,14 +129,10 @@ fun GeneralSettingsTab(
                         // --- Logout Button ---
                         Button(
                                 onClick = {
-                                        scope.launch {
-                                                userPrefs.setLoggedIn(false)
-                                                userPrefs.setLoginType("")
-                                                FirebaseAuth.getInstance().signOut()
-                                                onLogout()
-                                        }
+                                        isLoggingOut = true
+                                        profileViewModel.logout { onLogout() }
                                 },
-                                // Use a neutral or primary color for logout, keep error for delete
+                                enabled = !isLoggingOut,
                                 colors =
                                         ButtonDefaults.buttonColors(
                                                 containerColor = MaterialTheme.colorScheme.secondary

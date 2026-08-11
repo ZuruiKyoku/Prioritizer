@@ -25,7 +25,9 @@ data class TaskListEntity(
         val isShared: Boolean = false,
         val importedFromUid: String? = null,
         val importedListId: Long? = null,
-        val ownerId: String? = null
+        val ownerId: String? = null,
+        val createdAt: Long = System.currentTimeMillis(),
+        val updatedAt: Long = System.currentTimeMillis()
 ) {
     fun isOwner(currentUid: String?) = ownerId != null && ownerId == currentUid
 }

@@ -16,33 +16,40 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.google.firebase.FirebaseApp
-import com.google.firebase.auth.FirebaseAuth
-import com.slygames.prioritizer.data.AppDatabase
-import com.slygames.prioritizer.data.list.TaskListEntity
 import com.slygames.prioritizer.data.task.ExportTask
-import com.slygames.prioritizer.data.task.TaskEntity
+import com.slygames.prioritizer.data.task.TaskRepository
 import com.slygames.prioritizer.ui.TaskListScreen
+import com.slygames.prioritizer.ui.auth.ForgotPasswordScreen
 import com.slygames.prioritizer.ui.auth.LoginScreen
+import com.slygames.prioritizer.ui.auth.RegisterScreen
 import com.slygames.prioritizer.ui.profile.ProfileScreen
 import com.slygames.prioritizer.ui.splash.StandardSplashScreen
 import com.slygames.prioritizer.ui.theme.PrioritizerTheme
+import com.slygames.prioritizer.viewmodel.AuthViewModel
+import com.slygames.prioritizer.viewmodel.SettingsViewModel
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject lateinit var taskRepository: TaskRepository
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        FirebaseApp.initializeApp(this)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
@@ -56,37 +63,29 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Handle deep link import if launched with ACTION_VIEW
+        // Handle deep link import if launched with ACTION_VIEW (opening a shared .prioritizer file)
         if (savedInstanceState == null && intent?.action == Intent.ACTION_VIEW) {
             intent.data?.let { uri ->
                 val inputStream = contentResolver.openInputStream(uri)
                 val content = inputStream?.bufferedReader()?.readText()
                 inputStream?.close()
 
-                val imported = Json.decodeFromString<List<ExportTask>>(content ?: "")
-                val db = AppDatabase.getInstance(this)
-                val dao = db.taskDao()
-
-                lifecycleScope.launch {
-                    val listId =
-                            dao.insertTaskList(
-                                    TaskListEntity(
-                                            name = "Imported List ${System.currentTimeMillis()}",
-                                            id = 0,
-                                            todoCount = 0,
-                                            completedCount = 0,
-                                            totalCount = 0
-                                    )
-                            )
-                    imported.forEach {
-                        dao.insertTask(
-                                TaskEntity(
-                                        description = it.description,
-                                        priority = it.priority,
-                                        done = it.done,
-                                        listId = listId
+                val imported = runCatching { Json.decodeFromString<List<ExportTask>>(content ?: "") }.getOrNull()
+                if (imported != null) {
+                    lifecycleScope.launch {
+                        val listId =
+                                taskRepository.addTaskList(
+                                        name = "Imported List ${System.currentTimeMillis()}",
+                                        ownerId = null
                                 )
-                        )
+                        imported.forEach {
+                            taskRepository.addTask(
+                                    description = it.description,
+                                    priority = it.priority,
+                                    listId = listId,
+                                    done = it.done
+                            )
+                        }
                     }
                 }
                 intent.data = null
@@ -96,29 +95,22 @@ class MainActivity : ComponentActivity() {
         val launchAction = intent?.action
 
         setContent {
-            val userPrefs = (applicationContext as PrioritizerApp).userPrefs
-            val isDark by userPrefs.isDarkModeFlow.collectAsStateWithLifecycle(initialValue = false)
+            val settingsViewModel: SettingsViewModel = hiltViewModel()
+            val isDark by settingsViewModel.isDarkMode.collectAsStateWithLifecycle(initialValue = false)
 
             PrioritizerTheme(darkTheme = isDark) {
-                Surface(
-                        modifier = androidx.compose.ui.Modifier.fillMaxSize(),
-                        color = MaterialTheme.colorScheme.background
-                ) {
+                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val navController = rememberNavController()
-                    val auth = remember { FirebaseAuth.getInstance() }
-                    val isLoggedIn by
-                            userPrefs.isLoggedInFlow.collectAsStateWithLifecycle(
-                                    initialValue = false
-                            )
                     val scope = rememberCoroutineScope()
 
                     NavHost(navController = navController, startDestination = "splash") {
                         composable("splash") {
+                            val authViewModel: AuthViewModel = hiltViewModel()
                             StandardSplashScreen(
                                     logoResId = R.drawable.sly_games_logo,
                                     navController = navController,
                                     launchAction = launchAction,
-                                    userPrefs = userPrefs,
+                                    authViewModel = authViewModel,
                                     navigateTo = "tasks",
                                     fallbackScreen = "login"
                             )
@@ -131,19 +123,14 @@ class MainActivity : ComponentActivity() {
                             TaskListScreen(
                                     initialDarkMode = isDark,
                                     navController = navController,
-                                    showFriendPopup =
-                                            action ==
-                                                    "com.slygames.prioritizer.SHOW_FRIEND_REQUESTS"
+                                    showFriendPopup = action == "com.slygames.prioritizer.SHOW_FRIEND_REQUESTS"
                             )
                         }
                         composable("profile") {
                             ProfileScreen(
                                     onLogout = {
                                         scope.launch {
-                                            userPrefs.setLoggedIn(false)
-                                            navController.navigate("login") {
-                                                popUpTo(0) { inclusive = true }
-                                            }
+                                            navController.navigate("login") { popUpTo(0) { inclusive = true } }
                                         }
                                     }
                             )
@@ -152,10 +139,25 @@ class MainActivity : ComponentActivity() {
                             LoginScreen(
                                     initialDarkMode = isDark,
                                     onLoginSuccess = {
-                                        navController.navigate("tasks") {
-                                            popUpTo("login") { inclusive = true }
-                                        }
-                                    }
+                                        navController.navigate("tasks") { popUpTo("login") { inclusive = true } }
+                                    },
+                                    onNavigateToRegister = { navController.navigate("register") },
+                                    onNavigateToForgotPassword = { navController.navigate("forgotPassword") }
+                            )
+                        }
+                        composable("register") {
+                            RegisterScreen(
+                                    initialDarkMode = isDark,
+                                    onRegisterSuccess = {
+                                        navController.navigate("tasks") { popUpTo("login") { inclusive = true } }
+                                    },
+                                    onBackToLogin = { navController.popBackStack() }
+                            )
+                        }
+                        composable("forgotPassword") {
+                            ForgotPasswordScreen(
+                                    initialDarkMode = isDark,
+                                    onBackToLogin = { navController.popBackStack() }
                             )
                         }
                     }
@@ -171,12 +173,10 @@ class MainActivity : ComponentActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 1001) {
-            if ((grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)
-            ) {
+            if ((grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)) {
                 Log.d("FCM", "Notifications permission granted")
             } else {
-                Toast.makeText(this, "Please enable notifications in settings", Toast.LENGTH_LONG)
-                        .show()
+                Toast.makeText(this, "Please enable notifications in settings", Toast.LENGTH_LONG).show()
             }
         }
     }

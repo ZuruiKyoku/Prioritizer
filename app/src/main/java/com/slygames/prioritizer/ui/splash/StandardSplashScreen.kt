@@ -30,14 +30,12 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
-import com.google.firebase.auth.FirebaseAuth
-import com.slygames.prioritizer.PrioritizerApp
-import com.slygames.prioritizer.data.user.UserPreferences
+import com.slygames.prioritizer.viewmodel.AuthUiState
+import com.slygames.prioritizer.viewmodel.AuthViewModel
 import kotlinx.coroutines.delay
 
 @Composable
@@ -45,20 +43,16 @@ fun StandardSplashScreen(
         logoResId: Int,
         navController: NavHostController,
         launchAction: String?,
-        userPrefs: UserPreferences,
+        authViewModel: AuthViewModel,
         navigateTo: String = "home",
         fallbackScreen: String = "login",
         delayMillis: Long = 3000L
 ) {
-    val context = LocalContext.current
     var visible by remember { mutableStateOf(false) }
     var navigating by remember { mutableStateOf(false) }
-    var isSyncing by remember { mutableStateOf(false) }
+    val uiState by authViewModel.uiState.collectAsStateWithLifecycle()
+    val isSyncing = uiState is AuthUiState.Loading
 
-    val viewModel = (context.applicationContext as PrioritizerApp).mainViewModel
-    viewModel.resetRequestsDialog()
-
-    // Animate gradient fill % (0f to 1f)
     val gradientProgress by
             animateFloatAsState(
                     targetValue = if (visible && !navigating) 1f else 0f,
@@ -70,23 +64,13 @@ fun StandardSplashScreen(
         delay(100) // Give Compose one frame to compose
         visible = true
 
-        val minDisplayTimeMillis = 3000L
+        val minDisplayTimeMillis = delayMillis
         val startTime = System.currentTimeMillis()
 
-        val loginType = userPrefs.getLoginType()
-        val signedIn =
-                when (loginType) {
-                    "google" -> FirebaseAuth.getInstance().currentUser != null
-                    "guest" -> true
-                    else -> false
-                }
-
-        if (loginType == "google" && signedIn) {
-            isSyncing = true
-            val viewModel = (context.applicationContext as PrioritizerApp).mainViewModel
-            viewModel.restoreFromCloud(context)
-            isSyncing = false
-        }
+        // Resolve auth state (and, if a session exists, restore cloud data) before deciding
+        // where to go -- join() so we don't race the navigation decision below.
+        authViewModel.resumeExistingSession().join()
+        val signedIn = authViewModel.uiState.value is AuthUiState.SignedIn
 
         val elapsed = System.currentTimeMillis() - startTime
         val remaining = minDisplayTimeMillis - elapsed
@@ -94,19 +78,15 @@ fun StandardSplashScreen(
 
         navigating = true
         visible = false // Start fade out + gradient drain
-
         delay(1000) // Wait for full fade-out
 
         val destination = if (signedIn) navigateTo else fallbackScreen
         val actionSuffix = launchAction?.let { "?action=${Uri.encode(it)}" } ?: ""
 
-        navController.navigate(destination + actionSuffix) {
-            popUpTo("splash") { inclusive = true }
-        }
+        navController.navigate(destination + actionSuffix) { popUpTo("splash") { inclusive = true } }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Animated gradient background
         Canvas(modifier = Modifier.fillMaxSize()) {
             val fullHeight = size.height
             val fillHeight = fullHeight * gradientProgress
@@ -124,7 +104,6 @@ fun StandardSplashScreen(
             )
         }
 
-        // Manual scale & alpha animation
         val logoScale by
                 animateFloatAsState(
                         targetValue = if (visible) 1f else 0.8f,
@@ -140,10 +119,7 @@ fun StandardSplashScreen(
                 )
 
         Column(
-                modifier =
-                        Modifier.fillMaxSize().padding(32.dp).graphicsLayer {
-                            alpha = contentAlpha
-                        },
+                modifier = Modifier.fillMaxSize().padding(32.dp).graphicsLayer { alpha = contentAlpha },
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
         ) {

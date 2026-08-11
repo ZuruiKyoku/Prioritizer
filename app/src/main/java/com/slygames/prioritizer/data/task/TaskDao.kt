@@ -11,10 +11,32 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TaskDao {
-    @Query("SELECT * FROM task_lists") fun getTaskLists(): Flow<List<TaskListEntity>>
+    @Query("SELECT * FROM task_lists ORDER BY name ASC")
+    fun getTaskLists(): Flow<List<TaskListEntity>>
 
-    @Query("SELECT * FROM tasks WHERE listId = :listId")
+    // Default ordering rule (spec): priority descending, ties broken by creation order.
+    @Query("SELECT * FROM tasks WHERE listId = :listId ORDER BY priority DESC, createdAt ASC")
     fun getTasksForList(listId: Long): Flow<List<TaskEntity>>
+
+    @Query(
+            "SELECT * FROM tasks WHERE listId = :listId AND done = 0 ORDER BY priority DESC, createdAt ASC"
+    )
+    fun getActiveTasksForList(listId: Long): Flow<List<TaskEntity>>
+
+    @Query(
+            "SELECT * FROM tasks WHERE listId = :listId AND done = 1 ORDER BY priority DESC, createdAt ASC"
+    )
+    fun getCompletedTasksForList(listId: Long): Flow<List<TaskEntity>>
+
+    @Query("SELECT * FROM tasks WHERE uuid = :uuid LIMIT 1") suspend fun getTaskByUuid(uuid: String): TaskEntity?
+
+    /**
+     * Bridges rows mirrored under the pre-uuid scheme, where the local Room [TaskEntity.id] was
+     * (buggily) set equal to the remote numeric task id. Used only to adopt/heal those legacy
+     * rows the first time a shared list is mirrored after the uuid migration -- see SyncManager.
+     */
+    @Query("SELECT * FROM tasks WHERE id = :legacyId AND listId = :listId LIMIT 1")
+    suspend fun getTaskByLegacyRoomId(legacyId: Long, listId: Long): TaskEntity?
 
     @Insert suspend fun insertTaskList(taskList: TaskListEntity): Long
 

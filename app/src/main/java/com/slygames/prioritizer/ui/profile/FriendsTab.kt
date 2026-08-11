@@ -11,37 +11,35 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.google.firebase.auth.FirebaseAuth
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slygames.prioritizer.data.user.FriendProfile
 import com.slygames.prioritizer.ui.components.FriendItem
 import com.slygames.prioritizer.ui.dialogs.AddFriendDialog
 import com.slygames.prioritizer.ui.dialogs.RequestsDetailDialog
-import com.slygames.prioritizer.viewmodel.MainViewModel
+import com.slygames.prioritizer.viewmodel.FriendsViewModel
+import com.slygames.prioritizer.viewmodel.RequestsViewModel
 
 @Composable
-fun FriendsTab(viewModel: MainViewModel) {
-    var isLoading by remember { mutableStateOf(true) }
-    val friendList by viewModel.getFriendList().collectAsState(initial = emptyList())
+fun FriendsTab(
+        friendsViewModel: FriendsViewModel = hiltViewModel(),
+        requestsViewModel: RequestsViewModel = hiltViewModel()
+) {
+    val friendList by friendsViewModel.friends.collectAsStateWithLifecycle()
     var showAddDialog by remember { mutableStateOf(false) }
     var showRequestsDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
     var friendToDelete by remember { mutableStateOf<FriendProfile?>(null) }
-    val incomingFriendRequests by
-            viewModel.getIncomingFriendRequests().collectAsState(initial = emptyList())
-    val incomingShareRequests by
-            viewModel.getIncomingSharedLists().collectAsState(initial = emptyList())
+    val incomingFriendRequests by requestsViewModel.incomingFriendRequests.collectAsStateWithLifecycle()
+    val incomingShareRequests by requestsViewModel.incomingSharedListInvites.collectAsStateWithLifecycle()
 
     fun inviteFriend() {
         val intent =
                 Intent(Intent.ACTION_SEND).apply {
                     type = "text/plain"
-                    putExtra(
-                            Intent.EXTRA_TEXT,
-                            "Join me on Prioritizer! Download it here: https://google.com"
-                    )
+                    putExtra(Intent.EXTRA_TEXT, "Join me on Prioritizer! Download it here: https://google.com")
                 }
-        val chooser = Intent.createChooser(intent, "Invite a friend")
-        context.startActivity(chooser)
+        context.startActivity(Intent.createChooser(intent, "Invite a friend"))
     }
 
     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxWidth()) {
@@ -53,10 +51,7 @@ fun FriendsTab(viewModel: MainViewModel) {
                             horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Spacer(Modifier.height(32.dp))
-                        Text(
-                                "You have no friends added yet.",
-                                style = MaterialTheme.typography.titleMedium
-                        )
+                        Text("You have no friends added yet.", style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(8.dp))
                         Text(
                                 "Add friends by clicking the button above and entering their friend code.",
@@ -67,12 +62,7 @@ fun FriendsTab(viewModel: MainViewModel) {
                     }
                 }
                 else -> {
-                    Box(
-                            modifier =
-                                    Modifier.fillMaxWidth()
-                                            .height(400.dp)
-                                            .verticalScroll(rememberScrollState())
-                    ) {
+                    Box(modifier = Modifier.fillMaxWidth().height(400.dp).verticalScroll(rememberScrollState())) {
                         Column {
                             friendList.forEach { friend ->
                                 FriendItem(friend = friend, onRemove = { friendToDelete = it })
@@ -92,10 +82,9 @@ fun FriendsTab(viewModel: MainViewModel) {
             Spacer(modifier = Modifier.height(16.dp))
 
             if (incomingFriendRequests.isNotEmpty() || incomingShareRequests.isNotEmpty()) {
-                Button(
-                        onClick = { showRequestsDialog = true },
-                        modifier = Modifier.fillMaxWidth()
-                ) { Text("View Requests") }
+                Button(onClick = { showRequestsDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text("View Requests")
+                }
             }
         }
     }
@@ -103,22 +92,12 @@ fun FriendsTab(viewModel: MainViewModel) {
     if (showAddDialog) {
         AddFriendDialog(
                 onAdd = { formattedCode ->
-                    val myUid =
-                            FirebaseAuth.getInstance().currentUser?.uid ?: return@AddFriendDialog
-                    isLoading = true // reused or local state
-                    viewModel.sendFriendRequest(formattedCode) { success, error ->
-                        isLoading = false
+                    friendsViewModel.addFriend(formattedCode) { success, error ->
                         if (success) {
-                            Toast.makeText(context, "Friend request sent!", Toast.LENGTH_SHORT)
-                                    .show()
+                            Toast.makeText(context, "Friend request sent!", Toast.LENGTH_SHORT).show()
                             showAddDialog = false
                         } else {
-                            Toast.makeText(
-                                            context,
-                                            error ?: "Failed to send request",
-                                            Toast.LENGTH_SHORT
-                                    )
-                                    .show()
+                            Toast.makeText(context, error ?: "Failed to send request", Toast.LENGTH_SHORT).show()
                             // Keep dialog open so user can retry
                         }
                     }
@@ -129,17 +108,13 @@ fun FriendsTab(viewModel: MainViewModel) {
 
     if (showRequestsDialog) {
         RequestsDetailDialog(
-                viewModel = viewModel,
+                viewModel = requestsViewModel,
                 friendRequests = incomingFriendRequests,
                 sharedListInvites = incomingShareRequests,
-                onAcceptFriend = { viewModel.acceptFriendRequest(it, context) },
-                onDeclineFriend = { viewModel.declineFriendRequest(it) },
-                onAcceptSharedList = { uuid ->
-                    viewModel.acceptSharedListInvite(uuid)
-                }, // ⬅️ changed
-                onDeclineSharedList = { uuid ->
-                    viewModel.declineSharedListInvite(uuid)
-                }, // ⬅️ changed
+                onAcceptFriend = { requestsViewModel.acceptFriendRequest(it) },
+                onDeclineFriend = { requestsViewModel.declineFriendRequest(it) },
+                onAcceptSharedList = { uuid -> requestsViewModel.acceptSharedListInvite(uuid) },
+                onDeclineSharedList = { uuid -> requestsViewModel.declineSharedListInvite(uuid) },
                 onDismiss = { showRequestsDialog = false }
         )
     }
@@ -152,33 +127,13 @@ fun FriendsTab(viewModel: MainViewModel) {
                 confirmButton = {
                     TextButton(
                             onClick = {
-                                val myUid = FirebaseAuth.getInstance().currentUser?.uid
-                                if (myUid == null) {
-                                    friendToDelete = null // Always close dialog
-                                    return@TextButton
-                                }
-
-                                viewModel.removeFriendFully(myUid, friend) {
-                                    // No need to manually remove from list — Firestore flow will
-                                    // handle it
-                                    Toast.makeText(
-                                                    context,
-                                                    "Removed ${friend.displayName}",
-                                                    Toast.LENGTH_SHORT
-                                            )
-                                            .show()
-                                    friendToDelete = null // Close dialog after successful cleanup
-                                }
+                                friendsViewModel.removeFriend(friend)
+                                Toast.makeText(context, "Removed ${friend.displayName}", Toast.LENGTH_SHORT).show()
+                                friendToDelete = null
                             }
                     ) { Text("Remove") }
                 },
-                dismissButton = {
-                    TextButton(
-                            onClick = {
-                                friendToDelete = null // Cancel
-                            }
-                    ) { Text("Cancel") }
-                }
+                dismissButton = { TextButton(onClick = { friendToDelete = null }) { Text("Cancel") } }
         )
     }
 }
