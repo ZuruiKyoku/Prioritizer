@@ -44,6 +44,18 @@ android {
         unitTests {
             isIncludeAndroidResources = true
             isReturnDefaultValues = true
+            all {
+                // Robolectric's legacy SQLite shadow extracts a native sqlite4java.dll into
+                // java.io.tmpdir on every test run. On some Windows machines, antivirus/EDR
+                // blocks writing a freshly-created, unsigned .dll straight into the generic
+                // %TEMP% root (AccessDeniedException), even though the same folder tree is
+                // otherwise fully writable. Redirecting to a folder already inside the project's
+                // own build output -- which tooling already writes to constantly -- avoids
+                // whatever heuristic is triggering on raw %TEMP%\<random>\*.dll.
+                val robolectricTmp = layout.buildDirectory.dir("robolectric-tmp").get().asFile
+                it.doFirst { robolectricTmp.mkdirs() }
+                it.systemProperty("java.io.tmpdir", robolectricTmp.absolutePath)
+            }
         }
     }
 }
@@ -116,6 +128,12 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.room.runtime)
+    // Robolectric normally fetches this Android SDK jar itself via its own ad-hoc downloader,
+    // which is flaky on Windows (fails with "Unable to create parent directories..." even with a
+    // working internet connection). Declaring it as a normal Gradle dependency lets Gradle's own
+    // (already-working) resolver fetch and cache it instead -- Robolectric then just finds it
+    // already on the test classpath and skips its own fetch entirely.
+    testRuntimeOnly("org.robolectric:android-all-instrumented:14-robolectric-10818077-i6")
 
     // Instrumented tests
     androidTestImplementation(libs.androidx.junit)
