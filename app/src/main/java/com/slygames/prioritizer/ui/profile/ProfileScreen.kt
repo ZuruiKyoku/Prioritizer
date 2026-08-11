@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.firebase.auth.FirebaseAuth
+import com.slygames.prioritizer.ui.components.ResponsiveContent
 import com.slygames.prioritizer.ui.dialogs.EditProfileDialog
 import com.slygames.prioritizer.util.loadProfileImage
 import com.slygames.prioritizer.viewmodel.ProfileViewModel
@@ -73,6 +74,7 @@ fun ProfileScreen(
             color = MaterialTheme.colorScheme.background,
             modifier = Modifier.fillMaxSize().navigationBarsPadding().statusBarsPadding()
     ) {
+        ResponsiveContent {
         Column(
                 modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -174,6 +176,7 @@ fun ProfileScreen(
                             )
                 }
             }
+        }
         }
 
         if (showEditDialog) {

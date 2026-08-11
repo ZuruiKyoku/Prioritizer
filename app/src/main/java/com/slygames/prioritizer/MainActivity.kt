@@ -13,6 +13,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -34,7 +35,9 @@ import com.slygames.prioritizer.ui.auth.LoginScreen
 import com.slygames.prioritizer.ui.auth.RegisterScreen
 import com.slygames.prioritizer.ui.profile.ProfileScreen
 import com.slygames.prioritizer.ui.splash.StandardSplashScreen
+import com.slygames.prioritizer.ui.theme.LocalWindowWidthSizeClass
 import com.slygames.prioritizer.ui.theme.PrioritizerTheme
+import com.slygames.prioritizer.ui.theme.rememberAppWindowSizeClass
 import com.slygames.prioritizer.viewmodel.AuthViewModel
 import com.slygames.prioritizer.viewmodel.SettingsViewModel
 import dagger.hilt.android.AndroidEntryPoint
@@ -102,7 +105,9 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val navController = rememberNavController()
                     val scope = rememberCoroutineScope()
+                    val windowSizeClass = rememberAppWindowSizeClass(this@MainActivity)
 
+                    CompositionLocalProvider(LocalWindowWidthSizeClass provides windowSizeClass.widthSizeClass) {
                     NavHost(navController = navController, startDestination = "splash") {
                         composable("splash") {
                             val authViewModel: AuthViewModel = hiltViewModel()
@@ -160,6 +165,7 @@ class MainActivity : ComponentActivity() {
                                     onBackToLogin = { navController.popBackStack() }
                             )
                         }
+                    }
                     }
                 }
             }

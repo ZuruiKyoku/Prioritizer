@@ -106,6 +106,16 @@ Unit tests live under `app/src/test` and cover priority validation/clamping, sor
 database via Robolectric, not a hand-rolled comparator), task completion, list CRUD, input
 validation, and duplicate-import prevention for shared lists.
 
+```bash
+./gradlew connectedAndroidTest
+```
+
+Needs a running emulator or connected device. `app/src/androidTest` has a Compose UI test
+(`TaskFlowTest`) covering the spec's example flow: guest login → add tasks at different
+priorities → verify auto-sort → complete a task → verify it moves to the Completed tab. It runs
+against the real Firebase SDK but never signs in (guest mode is local-only), so it's safe to run
+without your own Firebase project configured.
+
 ## Architecture
 
 ```
@@ -159,12 +169,18 @@ app/src/main/java/com/slygames/prioritizer/
 
 ## Known follow-ups
 
-- The `.prioritizer` export/import format and the "share list via file" flow predate the uuid
-  identity change above; imported tasks get a fresh local uuid, which is correct for private
-  lists but isn't wired into the shared-list identity model.
-- `ListManagerDialog`'s "manage sharing" checklist still calls Firestore directly for
-  adding/removing members instead of going through `SyncManager` — functionally fine, but worth
-  folding in for consistency.
-- No Compose UI tests yet (only unit tests). The multi-account real-time sync scenario in the
-  original spec (two accounts, live task edits reflecting across devices) needs to be verified
-  manually against a live Firebase project — it isn't something a unit test suite can exercise.
+- The multi-account real-time sync scenario in the original spec (two accounts, live task edits
+  reflecting across devices) needs to be verified manually against a live Firebase project — it
+  isn't something a unit or instrumented test suite can exercise on its own.
+- The `.prioritizer` file export/import feature is a one-way snapshot (send a list's contents to
+  someone as a file), not a sync mechanism — it was reviewed against the uuid identity change and
+  needs no fix: exported tasks carry no identity at all, and import always creates a brand-new
+  private list with fresh uuids, so there's no path where it could collide with or masquerade as
+  an existing shared list's canonical identity.
+
+### Responsive layout
+
+Tablets/unfolded foldables/landscape get their content capped to a comfortable reading width
+(`ResponsiveContent`, driven by `calculateWindowSizeClass`) instead of a phone-designed
+single-column layout stretching edge to edge. This hasn't been visually verified on an actual
+tablet or emulator — worth a look before shipping if tablet support matters to you.

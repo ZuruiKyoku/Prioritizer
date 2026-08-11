@@ -322,6 +322,33 @@ constructor(
         firestore.collection("sharedLists").document(uuid).collection("sharedWith").document(memberUid).delete().await()
     }
 
+    /** Current pending/accepted membership for a shared list, keyed by uid -> status. Used to
+     * pre-populate the owner's "manage sharing" checklist. */
+    suspend fun getSharedListMemberStatuses(uuid: String): Map<String, String> {
+        val snap =
+                firestore.collection("sharedLists").document(uuid).collection("sharedWith")
+                        .get(com.google.firebase.firestore.Source.SERVER).await()
+        return snap.documents.mapNotNull { doc ->
+            val status = doc.getString("status") ?: return@mapNotNull null
+            if (status == "pending" || status == "accepted") doc.id to status else null
+        }.toMap()
+    }
+
+    /**
+     * Owner-only bulk membership edit from the "manage sharing" checklist: added members go
+     * straight to "accepted" (no invite/notification round trip -- the owner is directly curating
+     * their own list, not asking permission), removed members are dropped from the list entirely.
+     */
+    suspend fun applyOwnerSharingChanges(uuid: String, added: List<String>, removed: List<String>) {
+        val sharedWithRef = firestore.collection("sharedLists").document(uuid).collection("sharedWith")
+        added.forEach { uid ->
+            sharedWithRef.document(uid)
+                    .set(mapOf("status" to "accepted", "addedAt" to FieldValue.serverTimestamp()))
+                    .await()
+        }
+        removed.forEach { uid -> sharedWithRef.document(uid).delete().await() }
+    }
+
     suspend fun acceptSharedListInvite(uuid: String): Result<Unit> {
         val me = auth.currentUser ?: return Result.failure(IllegalStateException("Not signed in"))
         return try {

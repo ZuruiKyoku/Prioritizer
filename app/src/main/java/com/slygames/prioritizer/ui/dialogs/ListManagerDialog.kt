@@ -11,13 +11,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FieldValue
-import com.google.firebase.firestore.FirebaseFirestore
 import com.slygames.prioritizer.data.list.TaskListEntity
 import com.slygames.prioritizer.data.user.FriendProfile
 import com.slygames.prioritizer.ui.components.ListManagerItem
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 
 @Composable
 fun ListManagerDialog(
@@ -31,6 +27,8 @@ fun ListManagerDialog(
         onLeaveSharedList: (Long) -> Unit,
         onShareListExternally: (Long) -> Unit,
         onShareListWithFriends: (List<String>, Long, String) -> Unit,
+        onLoadSharedMembers: suspend (listUuid: String) -> Map<String, String>,
+        onApplySharingChanges: (listUuid: String, added: List<String>, removed: List<String>) -> Unit,
         onAddList: (String) -> Unit,
         onDismiss: () -> Unit,
 ) {
@@ -47,7 +45,6 @@ fun ListManagerDialog(
     // Manage sharing state (owner-only)
     var initiallySharedWith by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var isLoadingMembers by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
 
     AlertDialog(
             onDismissRequest = onDismiss,
@@ -156,33 +153,12 @@ fun ListManagerDialog(
                 }
         val listUuid = list?.uuid
 
-        // Load current shared members from Firestore once when dialog opens
+        // Load current shared members once when dialog opens
         LaunchedEffect(listUuid) {
             if (!listUuid.isNullOrBlank()) {
                 isLoadingMembers = true
-                try {
-                    val snap =
-                            FirebaseFirestore.getInstance()
-                                    .collection("sharedLists")
-                                    .document(listUuid)
-                                    .collection("sharedWith")
-                                    .get(com.google.firebase.firestore.Source.SERVER)
-                                    .await()
-                    initiallySharedWith =
-                            snap.documents
-                                    .mapNotNull { doc ->
-                                        val status =
-                                                doc.getString("status") ?: return@mapNotNull null
-                                        if (status == "pending" || status == "accepted") {
-                                            doc.id to status
-                                        } else null
-                                    }
-                                    .toMap()
-                } catch (_: Exception) {
-                    initiallySharedWith = emptyMap()
-                } finally {
-                    isLoadingMembers = false
-                }
+                initiallySharedWith = onLoadSharedMembers(listUuid)
+                isLoadingMembers = false
             }
         }
 
@@ -203,35 +179,8 @@ fun ListManagerDialog(
                             showShareToFriendDialog = false
                             return@ManageSharingChecklistDialog
                         }
-                        scope.launch {
-                            val db = FirebaseFirestore.getInstance()
-                            // Apply additions
-                            added.forEach { uid ->
-                                db.collection("sharedLists")
-                                        .document(listUuid)
-                                        .collection("sharedWith")
-                                        .document(uid)
-                                        .set(
-                                                mapOf(
-                                                        "status" to
-                                                                "accepted", // or "pending" if you
-                                                        // prefer invite flow
-                                                        "addedAt" to FieldValue.serverTimestamp()
-                                                )
-                                        )
-                                        .await()
-                            }
-                            // Apply removals
-                            removed.forEach { uid ->
-                                db.collection("sharedLists")
-                                        .document(listUuid)
-                                        .collection("sharedWith")
-                                        .document(uid)
-                                        .delete()
-                                        .await()
-                            }
-                            showShareToFriendDialog = false
-                        }
+                        onApplySharingChanges(listUuid, added, removed)
+                        showShareToFriendDialog = false
                     }
             )
         }

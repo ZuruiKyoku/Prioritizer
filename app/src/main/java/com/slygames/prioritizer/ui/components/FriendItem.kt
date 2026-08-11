@@ -25,6 +25,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -132,8 +133,19 @@ fun FriendItem(
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onBackground,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
+
+                // Tap-based alternative to the swipe-to-remove gesture above -- swipe-only actions
+                // are unreachable for TalkBack and keyboard/switch users.
+                IconButton(onClick = { onRemove(friend) }) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Remove ${friend.displayName}",
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
             }
         }
     }

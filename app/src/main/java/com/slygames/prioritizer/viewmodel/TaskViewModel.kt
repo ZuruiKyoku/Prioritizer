@@ -6,6 +6,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
+import com.slygames.prioritizer.data.ConnectivityObserver
 import com.slygames.prioritizer.data.list.TaskListEntity
 import com.slygames.prioritizer.data.sync.SyncManager
 import com.slygames.prioritizer.data.task.TaskEntity
@@ -42,14 +43,22 @@ class TaskViewModel
 constructor(
         private val repository: TaskRepository,
         private val syncManager: SyncManager,
-        private val prefs: UserPreferences
+        private val prefs: UserPreferences,
+        connectivityObserver: ConnectivityObserver
 ) : ViewModel() {
+
+    /** Spec: show a subtle offline indicator, but never block editing while offline. */
+    val isOnline: StateFlow<Boolean> =
+            connectivityObserver.isOnline.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     private val _selectedListId = MutableStateFlow<Long?>(null)
     val selectedListId: StateFlow<Long?> = _selectedListId
 
     private val _filter = MutableStateFlow(TaskFilter.ALL)
     val filter: StateFlow<TaskFilter> = _filter
+
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery
 
     private val _events = MutableSharedFlow<String>()
     val events = _events.asSharedFlow()
@@ -62,11 +71,19 @@ constructor(
                     .flatMapLatest { id -> repository.getTaskListFlowById(id).map { it?.name ?: "" } }
                     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
+    /** Tasks for the selected list, filtered (All/Active/Completed) and then narrowed by
+     * [searchQuery] against title + description (spec: search must respect the active list and
+     * filter, not replace them). */
     val tasks: StateFlow<List<TaskEntity>> =
             combine(_selectedListId, _filter) { id, filter -> id to filter }
                     .flatMapLatest { (id, filter) ->
                         if (id == null) flowOf(emptyList())
                         else repository.getTasksForList(id, filter)
+                    }
+                    .combine(_searchQuery) { tasks, query ->
+                        val trimmed = query.trim()
+                        if (trimmed.isEmpty()) tasks
+                        else tasks.filter { it.description.contains(trimmed, ignoreCase = true) }
                     }
                     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -84,6 +101,10 @@ constructor(
 
     fun setFilter(filter: TaskFilter) {
         _filter.value = filter
+    }
+
+    fun setSearchQuery(query: String) {
+        _searchQuery.value = query
     }
 
     /** Ensures the user always lands on at least one list, without ever creating a second default
@@ -251,6 +272,23 @@ constructor(
                 _events.emit("List shared!")
             } catch (e: Exception) {
                 _events.emit("Couldn't share list: ${e.localizedMessage ?: "unknown error"}")
+            }
+        }
+    }
+
+    suspend fun getSharedListMemberStatuses(listUuid: String): Map<String, String> =
+            try {
+                syncManager.getSharedListMemberStatuses(listUuid)
+            } catch (e: Exception) {
+                emptyMap()
+            }
+
+    fun applySharingChanges(listUuid: String, added: List<String>, removed: List<String>) {
+        viewModelScope.launch {
+            try {
+                syncManager.applyOwnerSharingChanges(listUuid, added, removed)
+            } catch (e: Exception) {
+                _events.emit("Couldn't update sharing: ${e.localizedMessage ?: "unknown error"}")
             }
         }
     }

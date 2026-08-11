@@ -134,14 +134,15 @@ fun ListManagerItem(
                     ) {
                         if (list.isShared) {
                             if (isOwner) {
-                                IconButton(
-                                    onClick = { onShare(list.id) },
-                                    modifier = Modifier.size(24.dp)
-                                ) {
+                                // Full-size (48dp) touch target with a smaller glyph inside it,
+                                // rather than shrinking the IconButton itself below Android's
+                                // minimum recommended touch target.
+                                IconButton(onClick = { onShare(list.id) }) {
                                     Icon(
                                         imageVector = Icons.Default.ManageAccounts,
-                                        contentDescription = "Manage Sharing",
-                                        tint = MaterialTheme.colorScheme.primary
+                                        contentDescription = "Manage sharing for ${list.name}",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
                             } else {
@@ -154,15 +155,12 @@ fun ListManagerItem(
                                 )
                             }
                         } else {
-                            IconButton(
-                                onClick = { onShare(list.id) },
-                                modifier = Modifier
-                                    .size(24.dp)
-                            ) {
+                            IconButton(onClick = { onShare(list.id) }) {
                                 Icon(
                                     imageVector = Icons.Default.Share,
-                                    contentDescription = "Share",
-                                    tint = MaterialTheme.colorScheme.onSurface
+                                    contentDescription = "Share ${list.name}",
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
@@ -210,20 +208,25 @@ fun ListManagerItem(
 
                     Spacer(modifier = Modifier.weight(1f)) // takes remaining space between count and icon
 
-                    Box(
-                        modifier = Modifier.width(40.dp), // or size(48.dp) if you want more spacing
-                        contentAlignment = Alignment.CenterEnd
-                    ) {
-                        IconButton(
-                            onClick = { onRename(list.id, list.name) },
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "Rename",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
+                    // Tap-based delete/leave alongside the swipe gesture above -- swipe-only
+                    // actions are unreachable for TalkBack and keyboard/switch users.
+                    IconButton(onClick = { showConfirmDialog = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription =
+                                if (list.isShared && !isOwner) "Leave ${list.name}" else "Delete ${list.name}",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    IconButton(onClick = { onRename(list.id, list.name) }) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Rename ${list.name}",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
             }

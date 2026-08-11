@@ -17,6 +17,7 @@ android {
         targetSdk = 35
         versionCode = 11
         versionName = "Beta 1.0"
+        testInstrumentationRunner = "com.slygames.prioritizer.HiltTestRunner"
     }
 
     buildTypes {
@@ -119,4 +120,11 @@ dependencies {
     // Instrumented tests
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.espresso.core)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.rules)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    androidTestImplementation("com.google.dagger:hilt-android-testing:2.51.1")
+    kaptAndroidTest("com.google.dagger:hilt-android-compiler:2.51.1")
 }

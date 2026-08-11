@@ -21,6 +21,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -31,7 +33,9 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -54,6 +58,7 @@ import androidx.navigation.NavController
 import com.google.firebase.messaging.FirebaseMessaging
 import com.slygames.prioritizer.R
 import com.slygames.prioritizer.data.task.TaskEntity
+import com.slygames.prioritizer.ui.components.ResponsiveContent
 import com.slygames.prioritizer.ui.components.TaskItem
 import com.slygames.prioritizer.ui.dialogs.AddTaskDialog
 import com.slygames.prioritizer.ui.dialogs.EditTaskDialog
@@ -100,6 +105,8 @@ fun TaskListScreen(
     var selectedTab by remember { mutableStateOf(0) }
     var taskBeingEdited by remember { mutableStateOf<TaskEntity?>(null) }
     var showClearConfirmDialog by remember { mutableStateOf(false) }
+    var showSearch by remember { mutableStateOf(false) }
+    val searchQuery by taskViewModel.searchQuery.collectAsStateWithLifecycle()
 
     // Requests
     val showRequestsDialog by requestsViewModel.showDialog.collectAsStateWithLifecycle()
@@ -130,8 +137,10 @@ fun TaskListScreen(
 
     val userProfile by profileViewModel.userProfile.collectAsStateWithLifecycle()
     val bitmap = remember(userProfile?.profileImagePath) { loadProfileImage(userProfile?.profileImagePath) }
+    val isOnline by taskViewModel.isOnline.collectAsStateWithLifecycle()
 
     Box(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
+        ResponsiveContent {
         Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
                 floatingActionButton = {
@@ -182,13 +191,31 @@ fun TaskListScreen(
                 floatingActionButtonPosition = FabPosition.Center
         ) { padding ->
             Column(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Image(
-                        painter =
-                                if (isDarkMode) painterResource(id = R.drawable.logo_prioritizer_dark)
-                                else painterResource(id = R.drawable.logo_prioritizer),
-                        contentDescription = "Prioritizer Logo",
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp).heightIn(max = 30.dp)
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                    Image(
+                            painter =
+                                    if (isDarkMode) painterResource(id = R.drawable.logo_prioritizer_dark)
+                                    else painterResource(id = R.drawable.logo_prioritizer),
+                            contentDescription = "Prioritizer Logo",
+                            modifier = Modifier.weight(1f).heightIn(max = 30.dp)
+                    )
+                    IconButton(onClick = { showSearch = !showSearch; if (!showSearch) taskViewModel.setSearchQuery("") }) {
+                        Icon(
+                                imageVector = if (showSearch) Icons.Default.Close else Icons.Default.Search,
+                                contentDescription = if (showSearch) "Close search" else "Search tasks"
+                        )
+                    }
+                }
+
+                if (showSearch) {
+                    OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { taskViewModel.setSearchQuery(it) },
+                            singleLine = true,
+                            placeholder = { Text("Search tasks") },
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                    )
+                }
 
                 val activeCount = tasks.count { !it.done }
                 val completedCount = tasks.count { it.done }
@@ -221,8 +248,11 @@ fun TaskListScreen(
                     } else if (shownTasks.isEmpty()) {
                         Box(modifier = Modifier.fillMaxSize().padding(top = 32.dp), contentAlignment = Alignment.Center) {
                             Text(
-                                    if (selectedTab == 0) "Nothing here yet.\nAdd your first task and give it a priority."
-                                    else "No completed tasks yet.",
+                                    when {
+                                        searchQuery.isNotBlank() -> "No tasks match \"$searchQuery\"."
+                                        selectedTab == 0 -> "Nothing here yet.\nAdd your first task and give it a priority."
+                                        else -> "No completed tasks yet."
+                                    },
                                     style = MaterialTheme.typography.bodyLarge,
                                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
@@ -244,6 +274,22 @@ fun TaskListScreen(
                 }
 
                 Spacer(modifier = Modifier.height(80.dp))
+            }
+        }
+        }
+
+        if (!isOnline) {
+            Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)
+            ) {
+                Text(
+                        "Offline — changes will sync when you're back online.",
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.labelMedium,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+                )
             }
         }
 
@@ -324,6 +370,10 @@ fun TaskListScreen(
                     onShareListExternally = { id -> taskViewModel.shareListAsFile(context, id) },
                     onShareListWithFriends = { friendUids, id, fromName ->
                         taskViewModel.startShareList(context, id, friendUids, fromName)
+                    },
+                    onLoadSharedMembers = { uuid -> taskViewModel.getSharedListMemberStatuses(uuid) },
+                    onApplySharingChanges = { uuid, added, removed ->
+                        taskViewModel.applySharingChanges(uuid, added, removed)
                     },
                     onAddList = { name -> scope.launch { taskViewModel.createNewList(name) } },
                     onDismiss = { showListManager = false },
