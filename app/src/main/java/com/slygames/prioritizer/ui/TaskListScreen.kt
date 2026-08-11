@@ -81,6 +81,7 @@ fun TaskListScreen(
         initialDarkMode: Boolean,
         navController: NavController,
         showFriendPopup: Boolean,
+        targetListUuid: String? = null,
         taskViewModel: TaskViewModel = hiltViewModel(),
         requestsViewModel: RequestsViewModel = hiltViewModel(),
         friendsViewModel: FriendsViewModel = hiltViewModel(),
@@ -118,6 +119,9 @@ fun TaskListScreen(
 
     LaunchedEffect(Unit) {
         launch { settingsViewModel.isDarkMode.collect { isDarkMode = it } }
+
+        // Deep link from a shared-list notification: jump to that list once it's mirrored.
+        targetListUuid?.let { taskViewModel.selectListByUuid(it) }
 
         FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
             profileViewModel.saveFcmToken(token)

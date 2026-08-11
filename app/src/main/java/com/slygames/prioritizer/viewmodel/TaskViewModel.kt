@@ -128,6 +128,17 @@ constructor(
         _selectedListId.value = listId
     }
 
+    /**
+     * Deep-link entry point: selects the shared list matching [uuid] if it exists locally
+     * (e.g. tapping a shared-list notification). No-ops if we don't have it mirrored yet.
+     */
+    fun selectListByUuid(uuid: String) {
+        viewModelScope.launch {
+            val list = repository.getTaskListByUuid(uuid) ?: return@launch
+            _selectedListId.value = list.id
+        }
+    }
+
     fun createNewList(name: String) {
         viewModelScope.launch {
             val owner = FirebaseAuth.getInstance().currentUser?.uid

@@ -1,8 +1,9 @@
 package com.slygames.prioritizer.ui.splash
 
 import android.net.Uri
-import androidx.compose.animation.core.EaseOutBack
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -43,6 +44,7 @@ fun StandardSplashScreen(
         logoResId: Int,
         navController: NavHostController,
         launchAction: String?,
+        launchListUuid: String? = null,
         authViewModel: AuthViewModel,
         navigateTo: String = "home",
         fallbackScreen: String = "login",
@@ -81,9 +83,14 @@ fun StandardSplashScreen(
         delay(1000) // Wait for full fade-out
 
         val destination = if (signedIn) navigateTo else fallbackScreen
-        val actionSuffix = launchAction?.let { "?action=${Uri.encode(it)}" } ?: ""
+        val queryParams =
+                listOfNotNull(
+                        launchAction?.let { "action=${Uri.encode(it)}" },
+                        launchListUuid?.let { "listUuid=${Uri.encode(it)}" }
+                )
+        val querySuffix = if (queryParams.isNotEmpty()) "?" + queryParams.joinToString("&") else ""
 
-        navController.navigate(destination + actionSuffix) { popUpTo("splash") { inclusive = true } }
+        navController.navigate(destination + querySuffix) { popUpTo("splash") { inclusive = true } }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -104,10 +111,20 @@ fun StandardSplashScreen(
             )
         }
 
+        // Uses a spring instead of a hand-picked overshoot CubicBezierEasing (e.g. EaseOutBack):
+        // Compose's cubic-bezier root solver can throw IllegalArgumentException
+        // ("has no solution at ...") on overshoot curves (control points with y > 1) very close
+        // to t=1 due to floating-point precision — see
+        // https://issuetracker.google.com/issues/296447497. A spring produces the same
+        // bounce/overshoot feel without hitting that solver at all.
         val logoScale by
                 animateFloatAsState(
                         targetValue = if (visible) 1f else 0.8f,
-                        animationSpec = tween(durationMillis = 1000, easing = EaseOutBack),
+                        animationSpec =
+                                spring(
+                                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                                        stiffness = Spring.StiffnessLow
+                                ),
                         label = "LogoScale"
                 )
 

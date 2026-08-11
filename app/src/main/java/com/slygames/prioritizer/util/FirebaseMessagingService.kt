@@ -31,11 +31,29 @@ class AppFirebaseMessagingService : FirebaseMessagingService() {
                             action = "com.slygames.prioritizer.SHOW_FRIEND_REQUESTS"
                             putExtra("navigateTo", "friends")
                         }
-                        else -> {
-                            action = "com.slygames.prioritizer.ACCEPT_SHARED_LIST"
-                            putExtra("listId", message.data["listId"]?.toLongOrNull())
-                            putExtra("fromName", message.data["fromName"])
+                        // These all fire on an existing sharedLists/{listUuid} doc that the
+                        // recipient is already a member of, so we can deep-link straight to it.
+                        // (Cloud Functions send the list identifier as "listUuid" - see
+                        // functions/index.js - not "listId".)
+                        "TASK_ADDED",
+                        "TASK_COMPLETED",
+                        "TASK_MARKED_INCOMPLETE",
+                        "TASK_DELETED",
+                        "TASK_PRIORITY_CHANGED",
+                        "MEMBER_JOINED",
+                        "MEMBER_LEFT",
+                        "CLEAR_COMPLETED" -> {
+                            val listUuid = message.data["listUuid"]
+                            if (!listUuid.isNullOrBlank()) {
+                                action = "com.slygames.prioritizer.OPEN_SHARED_LIST"
+                                putExtra("listUuid", listUuid)
+                            }
                         }
+                        // LIST_SHARED/LIST_INVITE point at an invite the user hasn't accepted
+                        // yet (no local list to open), and LIST_DELETED's target no longer
+                        // exists - for these, and any unrecognized type, just open the app
+                        // normally rather than pretend to deep-link somewhere.
+                        else -> {}
                     }
                 }
 

@@ -96,6 +96,7 @@ class MainActivity : ComponentActivity() {
         }
 
         val launchAction = intent?.action
+        val launchListUuid = intent?.getStringExtra("listUuid")
 
         setContent {
             val settingsViewModel: SettingsViewModel = hiltViewModel()
@@ -115,20 +116,31 @@ class MainActivity : ComponentActivity() {
                                     logoResId = R.drawable.sly_games_logo,
                                     navController = navController,
                                     launchAction = launchAction,
+                                    launchListUuid = launchListUuid,
                                     authViewModel = authViewModel,
                                     navigateTo = "tasks",
                                     fallbackScreen = "login"
                             )
                         }
                         composable(
-                                "tasks?action={action}",
-                                arguments = listOf(navArgument("action") { nullable = true })
+                                "tasks?action={action}&listUuid={listUuid}",
+                                arguments =
+                                        listOf(
+                                                navArgument("action") { nullable = true },
+                                                navArgument("listUuid") { nullable = true }
+                                        )
                         ) {
                             val action = it.arguments?.getString("action")
+                            val listUuid = it.arguments?.getString("listUuid")
                             TaskListScreen(
                                     initialDarkMode = isDark,
                                     navController = navController,
-                                    showFriendPopup = action == "com.slygames.prioritizer.SHOW_FRIEND_REQUESTS"
+                                    showFriendPopup =
+                                            action == "com.slygames.prioritizer.SHOW_FRIEND_REQUESTS",
+                                    targetListUuid =
+                                            listUuid.takeIf {
+                                                action == "com.slygames.prioritizer.OPEN_SHARED_LIST"
+                                            }
                             )
                         }
                         composable("profile") {
