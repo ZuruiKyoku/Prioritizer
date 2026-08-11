@@ -1,0 +1,29 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Profile images live under: /profile_images/
+    // Filenames allowed:
+    //   - profile_{uid}.jpg
+    //   - profile_{uid}_{timestamp}.jpg   (e.g., profile_abc123_1693359945123.jpg)
+    match /profile_images/{fileName} {
+      // Auth-only reads
+      allow read: if request.auth != null;
+
+      // Owner-only writes (create/update/delete) with filename check
+      allow write: if request.auth != null
+                   && fileName.matches('^profile_' + request.auth.uid + '(?:_[0-9]+)?\\.jpg$')
+                   && (
+                        // delete → request.resource is null
+                        request.resource == null
+                        // create/update → enforce JPEG content type (optional but recommended)
+                        || request.resource.contentType == 'image/jpeg'
+                      );
+    }
+
+    // Everything else in the bucket is denied
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

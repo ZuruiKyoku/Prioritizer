@@ -71,6 +71,16 @@ These rules enforce:
   member (`sharedLists/{uuid}/sharedWith/{uid}`).
 - Friend and friend-request documents are only visible to the two parties involved.
 
+Also deploy the Storage rules in [`storage.rules`](storage.rules):
+
+```bash
+firebase deploy --only storage
+```
+
+These scope profile-picture uploads to `profile_images/profile_{uid}[_{timestamp}].jpg` —
+signed-in users can read any profile image, but can only write their own, and only as a
+`.jpg`/`image/jpeg` file. Everything else in the bucket is denied by default.
+
 ### 3. Cloud Functions (push notifications)
 
 The functions in [`functions/index.js`](functions/index.js) send FCM notifications for friend

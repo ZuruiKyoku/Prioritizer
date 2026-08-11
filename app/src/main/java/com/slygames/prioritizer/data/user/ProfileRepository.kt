@@ -128,9 +128,17 @@ constructor(
                 // uploads for existing users until the rules are reviewed against it.
                 val filename = "profile_${currentUser.uid}_${System.currentTimeMillis()}.jpg"
                 val ref = storage.reference.child("profile_images/$filename")
+                // Storage rules require request.resource.contentType == 'image/jpeg' on
+                // create/update. putBytes() does NOT infer a content type the way putFile(uri)
+                // can from a file extension -- without this, GCS defaults the object to
+                // application/octet-stream and the rule silently rejects every upload.
+                val metadata =
+                        com.google.firebase.storage.StorageMetadata.Builder()
+                                .setContentType("image/jpeg")
+                                .build()
                 firebaseImageUrl =
                         runCatching {
-                                    ref.putBytes(imageBytes)
+                                    ref.putBytes(imageBytes, metadata)
                                             .continueWithTask { task ->
                                                 if (!task.isSuccessful) {
                                                     throw task.exception ?: Exception("Upload failed")
