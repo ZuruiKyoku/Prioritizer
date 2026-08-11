@@ -15,8 +15,8 @@ android {
         applicationId = "com.slygames.prioritizer"
         minSdk = 24
         targetSdk = 35
-        versionCode = 11
-        versionName = "Beta 1.0"
+        versionCode = 12
+        versionName = "Beta 2.0"
         testInstrumentationRunner = "com.slygames.prioritizer.HiltTestRunner"
     }
 
