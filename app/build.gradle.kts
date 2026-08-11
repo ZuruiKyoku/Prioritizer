@@ -45,13 +45,18 @@ android {
             isIncludeAndroidResources = true
             isReturnDefaultValues = true
             all {
-                // Robolectric's legacy SQLite shadow extracts a native sqlite4java.dll into
-                // java.io.tmpdir on every test run. On some Windows machines, antivirus/EDR
-                // blocks writing a freshly-created, unsigned .dll straight into the generic
-                // %TEMP% root (AccessDeniedException), even though the same folder tree is
-                // otherwise fully writable. Redirecting to a folder already inside the project's
-                // own build output -- which tooling already writes to constantly -- avoids
-                // whatever heuristic is triggering on raw %TEMP%\<random>\*.dll.
+                // Robolectric's default (LEGACY) SQLite shadow extracts a native sqlite4java.dll
+                // into java.io.tmpdir on every test run. On some Windows machines, antivirus/EDR
+                // blocks writing a freshly-created, unsigned .dll straight into %TEMP%
+                // (AccessDeniedException), even though the same folder tree is otherwise fully
+                // writable -- redirecting the target folder just moves the same problem around.
+                // Robolectric's NATIVE SQLite mode (real AOSP SQLite via JNI, no on-the-fly DLL
+                // drop) sidesteps this class of AV heuristic entirely and is also 50-90% faster.
+                // See https://github.com/robolectric/robolectric/issues/8754 for background.
+                it.systemProperty("robolectric.sqliteMode", "NATIVE")
+                // Kept as a harmless fallback in case any test forces LEGACY mode via
+                // @SQLiteMode(LEGACY) -- redirects the DLL drop to a folder tooling already
+                // writes to constantly, which was the original (partial) workaround here.
                 val robolectricTmp = layout.buildDirectory.dir("robolectric-tmp").get().asFile
                 it.doFirst { robolectricTmp.mkdirs() }
                 it.systemProperty("java.io.tmpdir", robolectricTmp.absolutePath)
