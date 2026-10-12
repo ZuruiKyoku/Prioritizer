@@ -24,7 +24,7 @@ Kotlin/Compose, Room, Hilt and reactive repositories; Firebase Auth/Firestore/St
 - Local working branch at audit: `main`; code snapshot `a249b39b9ef422ee63edeed64599216ae6946b81`.
 - Pre-existing working-tree changes: **24** entries. These were not staged, committed or discarded by continuity setup.
 - Live GitHub default: `main` at `eed85158c2eb68757424f0399891dfc6408e3d40`.
-- Documentation is prepared on `docs/project-continuity-2026-10-12` from that default. Feature-branch implementation described below is not thereby merged.
+- Continuity documentation was prepared from the reviewed `main` baseline. This documentation-only delivery includes no feature-branch implementation.
 - Repository: https://github.com/ZuruiKyoku/Prioritizer (public).
 - Existing changed paths: `app/build.gradle.kts`, `app/src/main/AndroidManifest.xml`, `app/src/main/java/com/slygames/prioritizer/MainActivity.kt`, `app/src/main/java/com/slygames/prioritizer/data/AppDatabase.kt`, `app/src/main/java/com/slygames/prioritizer/data/list/TaskListEntity.kt`, `app/src/main/java/com/slygames/prioritizer/data/sync/SyncManager.kt`, `app/src/main/java/com/slygames/prioritizer/data/task/TaskDao.kt`, `app/src/main/java/com/slygames/prioritizer/data/task/TaskRepository.kt`, `app/src/main/java/com/slygames/prioritizer/data/user/FriendRepository.kt`, `app/src/main/java/com/slygames/prioritizer/data/user/ProfileRepository.kt`, `app/src/main/java/com/slygames/prioritizer/ui/TaskListScreen.kt`, `app/src/main/java/com/slygames/prioritizer/ui/components/ListManagerItem.kt`, `app/src/main/java/com/slygames/prioritizer/ui/dialogs/ListManagerDialog.kt`, `app/src/main/java/com/slygames/prioritizer/ui/dialogs/ShareListWithFriendDialog.kt`, `app/src/main/java/com/slygames/prioritizer/ui/profile/FriendsTab.kt`, `app/src/main/java/com/slygames/prioritizer/viewmodel/RequestsViewModel.kt`, `app/src/main/java/com/slygames/prioritizer/viewmodel/TaskViewModel.kt`, `firestore.rules`, `gradle/libs.versions.toml`, `gradle/wrapper/gradle-wrapper.properties`, `storage.rules`, `firebase-rules-audit.local.md`, `prioritizer-after.png`, `prioritizer-before.png`.
 
@@ -77,8 +77,8 @@ These are source/history findings; historical test reports are labeled and are n
 
 ## Session handoff
 
-- Last task: establish PROJECT_STATE.md and additive agent instructions from available project evidence.
+- Last task (2026-10-12): deliver the continuity documentation to the existing remote default branch `main`, as explicitly authorized by the user. Application changes and feature acceptance remain separate.
 - Documentation scope: preserve all pre-existing code, assets, branches, indexes and acceptance gates. A documentation branch does not back up uncommitted application work.
-- Publication state: consult the actual Git log/remote branch; do not assume a prepared branch was pushed or merged. The continuity report records the verified publication result.
+- Publication evidence: original documentation commit `b5771e01d998d3f53e3358ae1b2706e44982db02`; delivery targets `main` by normal fast-forward push. Confirm inclusion with Git ancestry; the external continuity report records the post-push remote SHA. Original local checkouts are not pulled or switched during delivery.
 - Next owner: follow Next steps above, fill historical gaps, and replace stale status with dated evidence after meaningful work.
 - Archive readiness: incomplete history and any local-only implementation still need reconciliation; do not infer that archiving all project chats is lossless.
